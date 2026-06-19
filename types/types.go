@@ -7,26 +7,25 @@ type MBR struct {
 	Dsk_fit            byte
 	Mbr_partitions     [4]Partition
 }
-}
 
 type Partition struct {
-	Part_status      byte     
-	Part_type        byte     
-	Part_fit         byte     
-	Part_start       int64    
-	Part_s           int64    
-	Part_name        [16]byte 
-	Part_correlative int32    
-	Part_id          [4]byte  
+	Part_status      byte
+	Part_type        byte
+	Part_fit         byte
+	Part_start       int64
+	Part_s           int64
+	Part_name        [16]byte
+	Part_correlative int32
+	Part_id          [4]byte
 }
 
 type EBR struct {
-	Part_mount byte     
-	Part_fit   byte     
-	Part_start int64    
-	Part_s     int64    
-	Part_next  int64    
-	Part_name  [16]byte 
+	Part_mount byte
+	Part_fit   byte
+	Part_start int64
+	Part_s     int64
+	Part_next  int64
+	Part_name  [16]byte
 }
 
 type Superblock struct {

@@ -1,9 +1,9 @@
 package partition
 
 import (
-	"fmt"
 	"MIAP1/types"
 	"MIAP1/utils"
+	"fmt"
 	"os"
 	"unsafe"
 )
@@ -11,12 +11,12 @@ import (
 func CreatePartition(tamanio int64, unidad, path, tipo, ajuste, nombre string) {
 
 	newPartition := types.Partition{
-		Estado:  '1',
-		Tipo:    tipo[0],
-		Ajuste:  ajuste[0],
-		Tamanio: utils.Tamanio(tamanio, unidad),
+		Part_status: '1',
+		Part_type:   tipo[0],
+		Part_fit:    ajuste[0],
+		Part_s:      utils.Tamanio(tamanio, unidad),
 	}
-	copy(newPartition.Nombre[:], nombre)
+	copy(newPartition.Part_name[:], nombre)
 
 	archivo, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
@@ -38,7 +38,7 @@ func CreatePartition(tamanio int64, unidad, path, tipo, ajuste, nombre string) {
 		return
 	}
 
-	espacio := mbr.Tamanio - int64(unsafe.Sizeof(mbr))
+	espacio := mbr.Mbr_tamano - int64(unsafe.Sizeof(mbr))
 	if tamanio > espacio {
 		fmt.Println("El tamanio de la particion no puede ser mayor al disco")
 		return
@@ -46,49 +46,48 @@ func CreatePartition(tamanio int64, unidad, path, tipo, ajuste, nombre string) {
 
 	for i := 0; i < 4; i++ {
 		if tipo == "P" || tipo == "E" {
-			if mbr.Particiones[i].Inicio == 0 {
+			if mbr.Mbr_partitions[i].Part_start == -1 || mbr.Mbr_partitions[i].Part_start == 0 {
 				fmt.Println("Particion insertada exitosamente")
 
-				newPartition.Inicio = int64(unsafe.Sizeof(mbr))
-				mbr.Particiones[0] = newPartition
+				newPartition.Part_start = int64(unsafe.Sizeof(mbr))
+				mbr.Mbr_partitions[0] = newPartition
 				utils.EscribirEnDisco(archivo, mbr)
 
 				fmt.Println("************************************************")
 				fmt.Println("++++++++++++++ Datos Particiones ++++++++++++++")
-				fmt.Println("Nombre: ", mbr.Particiones[i].Nombre)
-				fmt.Println("Estado: ", string(mbr.Particiones[i].Estado))
-				fmt.Println("Ajuste: ", mbr.Particiones[i].Ajuste)
-				fmt.Println("Inicio: ", mbr.Particiones[i].Inicio)
-				fmt.Println("Tamanio: ", mbr.Particiones[i].Tamanio)
-				fmt.Println("Tipo: ", string(mbr.Particiones[i].Tipo))
+				fmt.Println("Nombre: ", string(mbr.Mbr_partitions[0].Part_name[:]))
+				fmt.Println("Estado: ", string(mbr.Mbr_partitions[0].Part_status))
+				fmt.Println("Ajuste: ", string(mbr.Mbr_partitions[0].Part_fit))
+				fmt.Println("Inicio: ", mbr.Mbr_partitions[0].Part_start)
+				fmt.Println("Tamanio: ", mbr.Mbr_partitions[0].Part_s)
+				fmt.Println("Tipo: ", string(mbr.Mbr_partitions[0].Part_type))
 				fmt.Println("************************************************")
 				break
 			} else {
 				posicionLibre := 0
 				anterior := int64(0)
 				for j := 1; j < 4; j++ {
-					if mbr.Particiones[j].Inicio == 0 {
-						anterior = int64(mbr.Particiones[j-1].Inicio)
-						newPartition.Inicio = anterior + mbr.Particiones[j-1].Tamanio
+					if mbr.Mbr_partitions[j].Part_start == -1 || mbr.Mbr_partitions[j].Part_start == 0 {
+						anterior = int64(mbr.Mbr_partitions[j-1].Part_start)
+						newPartition.Part_start = anterior + mbr.Mbr_partitions[j-1].Part_s
 						posicionLibre = j
 						break
 					}
 				}
 
-				mbr.Particiones[posicionLibre] = newPartition
+				mbr.Mbr_partitions[posicionLibre] = newPartition
 				utils.EscribirEnDisco(archivo, mbr)
 				fmt.Println("************************************************")
 				fmt.Println("++++++++++++++ Datos Particiones ++++++++++++++")
-				fmt.Println("Nombre: ", mbr.Particiones[i].Nombre)
-				fmt.Println("Estado: ", string(mbr.Particiones[i].Estado))
-				fmt.Println("Ajuste: ", mbr.Particiones[i].Ajuste)
-				fmt.Println("Inicio: ", mbr.Particiones[i].Inicio)
-				fmt.Println("Tamanio: ", mbr.Particiones[i].Tamanio)
-				fmt.Println("Tipo: ", string(mbr.Particiones[i].Tipo))
+				fmt.Println("Nombre: ", string(mbr.Mbr_partitions[posicionLibre].Part_name[:]))
+				fmt.Println("Estado: ", string(mbr.Mbr_partitions[posicionLibre].Part_status))
+				fmt.Println("Ajuste: ", string(mbr.Mbr_partitions[posicionLibre].Part_fit))
+				fmt.Println("Inicio: ", mbr.Mbr_partitions[posicionLibre].Part_start)
+				fmt.Println("Tamanio: ", mbr.Mbr_partitions[posicionLibre].Part_s)
+				fmt.Println("Tipo: ", string(mbr.Mbr_partitions[posicionLibre].Part_type))
 				fmt.Println("************************************************")
 				break
 			}
 		}
 	}
-
 }

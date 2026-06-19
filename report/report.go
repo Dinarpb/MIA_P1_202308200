@@ -39,14 +39,14 @@ func MBR(rutaReporte, rutaDisco string) {
 	grafo += "<TD> MBR </TD> \n"
 
 	for i := 0; i < 4; i++ {
-		porcentaje := float64((float64(mbr.Particiones[i].Tamanio) * 100) / float64(mbr.Tamanio))
+		porcentaje := float64((float64(mbr.Mbr_partitions[i].Tamanio) * 100) / float64(mbr.Mbr_tamano))
 		porcentajeConvertido := fmt.Sprintf("%.2f", porcentaje)
-		tipo := string(mbr.Particiones[i].Tipo)
-		println(mbr.Particiones[i].Inicio != 0)
-		if mbr.Particiones[i].Inicio != 0 {
+		tipo := string(mbr.Mbr_partitions[i].Tipo)
+		println(mbr.Mbr_partitions[i].Inicio != 0)
+		if mbr.Mbr_partitions[i].Inicio != 0 {
 
 			grafo = grafo + "<TD> <TABLE BORDER=\"0\"> \n"
-			grafo = grafo + "<TR><TD>" + cadenaLimpia(mbr.Particiones[i].Nombre[:]) + "</TD></TR> \n"
+			grafo = grafo + "<TR><TD>" + cadenaLimpia(mbr.Mbr_partitions[i].Nombre[:]) + "</TD></TR> \n"
 			grafo = grafo + "<TR><TD>" + tipo + "</TD></TR> \n"
 			grafo = grafo + "<TR><TD>" + porcentajeConvertido + "%</TD></TR> \n"
 			grafo = grafo + "</TABLE> </TD>; \n"
@@ -57,15 +57,15 @@ func MBR(rutaReporte, rutaDisco string) {
 	espacioUsado := int64(0)
 
 	for i := 0; i < 4; i++ {
-		if mbr.Particiones[i].Inicio != 0 {
-			espacioUsado += int64(mbr.Particiones[i].Tamanio)
+		if mbr.Mbr_partitions[i].Inicio != 0 {
+			espacioUsado += int64(mbr.Mbr_partitions[i].Tamanio)
 		}
 	}
 
-	espacioLibre := int64(mbr.Tamanio) - espacioUsado
+	espacioLibre := int64(mbr.Mbr_tamano) - espacioUsado
 
-	if float64(mbr.Tamanio) > 0 {
-		porcentajeLibre := (float64(espacioLibre) * 100) / float64(mbr.Tamanio)
+	if float64(mbr.Mbr_tamano) > 0 {
+		porcentajeLibre := (float64(espacioLibre) * 100) / float64(mbr.Mbr_tamano)
 		porcentajeConvertido := fmt.Sprintf("%.3f", porcentajeLibre)
 		grafo = grafo + "<TD> <TABLE BORDER=\"0\"> \n"
 		grafo = grafo + "<TR><TD> LIBRE </TD></TR> \n"
