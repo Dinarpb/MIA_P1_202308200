@@ -20,19 +20,19 @@ func CreateDisk(size int64, fit string, unit string, path string) {
 	}
 
 	if _, err := os.Stat(path); err == nil {
-		fmt.Println("Error: El archivo ya existe.")
+		fmt.Println("[ERROR] El archivo ya existe.")
 		return
 	}
 
 	err := os.MkdirAll(filepath.Dir(path), os.ModePerm)
 	if err != nil {
-		fmt.Println("Error al crear carpetas base:", err)
+		fmt.Println("[ERROR] Error al crear carpetas base:", err)
 		return
 	}
 
 	file, err := os.Create(path)
 	if err != nil {
-		fmt.Println("Error al crear el archivo:", err)
+		fmt.Println("[ERROR] Error al crear el archivo:", err)
 		return
 	}
 	defer file.Close()
@@ -63,16 +63,16 @@ func CreateDisk(size int64, fit string, unit string, path string) {
 
 	err = binary.Write(file, binary.BigEndian, &mbr)
 	if err != nil {
-		fmt.Println("Error al escribir el MBR:", err)
+		fmt.Println("[ERROR] Error al escribir el MBR:", err)
 		return
 	}
 
-	fmt.Println("Disco creado exitosamente en:", path)
+	fmt.Println("[ÉXITO] Disco creado exitosamente en:", path)
 }
 
 func DeleteDisk(path string) {
 	if _, err := os.Stat(path); err != nil {
-		fmt.Println("Error: El disco no existe en la ruta especificada.")
+		fmt.Println("[ERROR] El disco no existe en la ruta especificada.")
 		return
 	}
 
@@ -83,9 +83,9 @@ func DeleteDisk(path string) {
 	if strings.ToLower(mess) == "si" {
 		err := os.Remove(path)
 		if err != nil {
-			fmt.Println("Error al eliminar el disco:", err)
+			fmt.Println("[ERROR] Error al eliminar el disco:", err)
 		} else {
-			fmt.Println("Disco eliminado exitosamente.")
+			fmt.Printf("[ÉXITO] Disco eliminado exitosamente: %s\n", path)
 		}
 	} else {
 		fmt.Println("Operación cancelada.")

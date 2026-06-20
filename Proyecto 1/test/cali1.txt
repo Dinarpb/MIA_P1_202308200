@@ -1,0 +1,108 @@
+#Calificacion MIA 2026 VACAS VAQUERAS
+
+#CREACION DE DISCOS
+#Cambiar "dinaarpb" por su usuario
+
+#error
+MKdesk -size=75 -unit=M -path=/home/dinaarpb/mia/cali/d1.dsk
+
+#Discos
+mkdisk -unit=M -size=75 -path=/home/dinaarpb/mia/cali/d1.dsk
+mkdisk -size=15 -path=/home/dinaarpb/mia/cali/d2.dsk -fit=bf
+mkdisk -size=100 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=bf
+mkdisk -size=-11 -unit=k -path=/home/dinaarpb/mia/cali/d2.dsk -fit=bf
+mkdisk -fit=WF -size=1 -path=/home/dinaarpb/mia/cali/eliminar/disco_eliminar1.dsk
+#error
+mkdisk -size=75 -unit=M -path=/home/dinaarpb/mia/cali/eliminar/disco_eliminar1.dsk
+mkdisk -size=10 -path=/home/dinaarpb/mia/cali/eliminar/disco_eliminar2.dsk
+#error
+MKdisk -unit=M -path=/home/dinaarpb/mia/cali/d1.dsk -fit=bf -siize=12
+
+PaUSe
+
+#CREACION DE PARTICIONES PRIMARIAS Y EXTENDIDAS
+
+#Crear particiones d1.dsk
+fdisk -unit=M -name=Part1-D1 -size=25 -path=/home/dinaarpb/mia/cali/d1.dsk
+fdisk -type=P -unit=M -name=Part2-D1 -size=20 -path=/home/dinaarpb/mia/cali/d1.dsk
+fdisk -type=e -unit=M -name=Part3-D1 -size=10 -path=/home/dinaarpb/mia/cali/d1.dsk
+fdisk -type=P -unit=M -name=Part4-D1 -size=10 -path=/home/dinaarpb/mia/cali/d1.dsk
+#error
+fdisk -type=P -unit=M -name=Part5-D1 -size=20 -path=/home/dinaarpb/mia/cali/d1.dsk
+fdisk -type=P -unit=M -name=Part5-D1 -size=30 -path=/home/dinaarpb/mia/cali/d1.dsk
+
+#ERROR
+efedisk -type=P -unit=M -name=Part3 -size=20 -path=/home/dinaarpb/mia/cali/d3.dsk
+
+PAUSE
+
+#Crear particiones d2.dsk
+#Error, no existe extendida
+fdisk -type=L -unit=M -name=Part6D2 -size=25 -path=/home/dinaarpb/mia/cali/d2.dsk
+#Ocupa los 10MB del disco
+fdisk -type=E -unit=M -name=Part1D2 -size=10 -path=/home/dinaarpb/mia/cali/d2.dsk -fit=ff
+#Error, ya existe una extendida
+fdisk -type=E -unit=M -name=Part7 -size=25 -path=/home/dinaarpb/mia/cali/d2.dsk -fit=wF
+#fdisk -type=L -unit=k -name=Part2D2 -size=1024 -path=/home/dinaarpb/mia/cali/d2.dsk
+#fdisk -type=L -unit=k -name=Part3D2 -size=1024 -path=/home/dinaarpb/mia/cali/d2.dsk
+#fdisk -type=L -unit=k -name=Part4D2 -size=1024 -path=/home/dinaarpb/mia/cali/d2.dsk
+
+pause
+
+#Crear particiones d3.dsk
+fdisk  -unit=M -name=Part1D3 -size=25 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=BF -type=E
+fdisk -type=P  -name=Part2D3 -size=25 -path=/home/dinaarpb/mia/cali/d3.dsk -unit=M -fit=BF
+#error
+fdisk -tipe=P -unyt=M -name=Part4D3 -size=25 -ruta=/home/dinaarpb/mia/cali/d3.dsk -fit=BF
+fdisk -type=P -unit=M -name=Part4D3 -size=25 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=WF
+fdisk -type=P -unit=M -name=Part3D3 -size=25 -fit=bEfe -path=/home/dinaarpb/mia/cali/d3.dsk 
+fdisk -type=P -unit=M -name=Part1D3 -size=25 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=FF
+fdisk -type=L -unit=K -name=Part1.1 -size=1024 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=FF
+fdisk -type=L -unit=K -name=Part1.2 -size=1024 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=FF
+fdisk -type=L -unit=K -name=Part1.3 -size=1024 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=FF
+fdisk -type=L -unit=K -name=Part1.4 -size=1024 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=FF
+fdisk -type=L -unit=K -name=Part1.5 -size=1024 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=FF
+fdisk -type=L -unit=K -name=Part1.6 -size=1024 -path=/home/dinaarpb/mia/cali/d3.dsk -fit=Bf
+
+PAUSE
+
+#MOUNT
+mount -path=/home/dinaarpb/mia/cali/d1.dsk -name=Part1-D1
+#ERROR
+mount -path=/home/dinaarpb/mia/cali/d2.dsk -name=PartuNO
+mount -path=/home/dinaarpb/mia/cali/d2.dsk -name=Part1D2
+mount -path=/home/dinaarpb/mia/cali/d3.dsk -name=Part1D3
+
+pause
+
+########reporte disk del estado inicial de las particiones
+rep -id=001A -Path=/home/dinaarpb/reportes/particiones/disk1.jpg -name=disk
+rep -id=002A -Path=/home/dinaarpb/reportes/particiones/disk2.jpg -name=disk
+rep -id=003A -Path=/home/dinaarpb/reportes/particiones/disk3.jpg -name=disk
+rep -id=001A -Path=/home/dinaarpb/reportes/particiones/mbr1.jpg -name=mbr
+rep -id=002A -Path=/home/dinaarpb/reportes/particiones/mbr2.jpg -name=mbr
+rep -id=003A -Path=/home/dinaarpb/reportes/particiones/mbr3.jpg -name=mbr
+
+PAUSE
+
+#ELIMINACION DE DISCOS
+#Error
+rmdisk -path="/home/a_eliminar_disco/no_existo.dsk"
+rmdisk -path=/home/dinaarpb/mia/cali/eliminar/disco_eliminar2.dsk
+#error
+errmdisk -path=/home/dinaarpb/mia/cali/eliminar/disco_eliminar1.dsk
+#error
+errmdisk -path=/home/dinaarpb/mia/eliminar/disco_eliminar1.dsk
+rmdisk -path=/home/dinaarpb/mia/cali/eliminar/disco_eliminar1.dsk
+
+PAUSE
+
+#UNMOUNT
+unmount -id=001A
+
+#Cerrar el programa para validar
+#Debe dar error porque no deberia estar montado nada
+rep -id=XXXX -Path=/home/parte1/mbr3.jpg -name=mbr
+
+#------------------------------------------------------------------
+#CON ESTE ARCHIVO IGUAL NO SALE

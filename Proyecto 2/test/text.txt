@@ -1,0 +1,1 @@
+mkdisk -unit=M -size=75 -path=/home/dinaarpb/mia/cali/d1.dsk

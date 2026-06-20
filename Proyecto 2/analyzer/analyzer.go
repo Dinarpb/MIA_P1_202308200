@@ -6,6 +6,7 @@ import (
 	"MIAP1/format"
 	"MIAP1/mount"
 	"MIAP1/partition"
+	"MIAP1/report"
 	"MIAP1/users"
 	"bufio"
 	"fmt"
@@ -35,11 +36,11 @@ func IniciarConsola() {
 			break
 		}
 
-		analizarComando(entrada)
+		AnalizarComando(entrada)
 	}
 }
 
-func analizarComando(entrada string) {
+func AnalizarComando(entrada string) {
 	partes := strings.Fields(entrada)
 	if len(partes) == 0 {
 		return
@@ -57,6 +58,8 @@ func analizarComando(entrada string) {
 		analizarFdisk(parametros)
 	case "mount":
 		analizarMount(parametros)
+	case "unmount":
+		analizarUnmount(parametros)
 	case "mkfs":
 		analizarMkfs(parametros)
 	case "cat":
@@ -74,7 +77,7 @@ func analizarComando(entrada string) {
 	case "rmusr":
 		user, ok := parametros["user"]
 		if !ok {
-			fmt.Println("Error: Falta -user")
+			fmt.Println("[ERROR] Falta -user")
 			return
 		}
 		users.Rmusr(user)
@@ -82,7 +85,7 @@ func analizarComando(entrada string) {
 		user, okU := parametros["user"]
 		grp, okG := parametros["grp"]
 		if !okU || !okG {
-			fmt.Println("Error: Falta -user o -grp")
+			fmt.Println("[ERROR] Falta -user o -grp")
 			return
 		}
 		users.Chgrp(user, grp)
@@ -91,13 +94,16 @@ func analizarComando(entrada string) {
 	case "mkfile":
 		analizarMkfile(parametros)
 	case "pause":
-		fmt.Println("Presione ENTER para continuar...")
-		bufio.NewReader(os.Stdin).ReadString('\n')
+		analizarPause(parametros)
+	case "rep":
+		analizarRep(parametros)
+	case "execute", "exec":
+		analizarExecute(parametros)
 	default:
 		if strings.HasPrefix(comando, "#") {
 			fmt.Println(entrada)
 		} else {
-			fmt.Println("Error: Comando no reconocido.")
+			fmt.Println("[ERROR] Comando no reconocido.")
 		}
 	}
 }
@@ -110,6 +116,8 @@ func extraerParametros(entrada string) map[string]string {
 	for _, coincidencia := range coincidencias {
 		clave := strings.ToLower(coincidencia[1])
 		valor := strings.Trim(coincidencia[2], "\"")
+		valor = strings.ReplaceAll(valor, "\"", "")
+		valor = strings.ReplaceAll(valor, "'", "")
 		parametros[clave] = valor
 	}
 
@@ -121,13 +129,13 @@ func analizarMkdisk(parametros map[string]string) {
 	path, okPath := parametros["path"]
 
 	if !okSize || !okPath {
-		fmt.Println("Error: Faltan parámetros obligatorios para MKDISK.")
+		fmt.Println("[ERROR] Faltan parámetros obligatorios para MKDISK.")
 		return
 	}
 
 	size, err := strconv.Atoi(sizeStr)
 	if err != nil || size <= 0 {
-		fmt.Println("Error: El tamaño debe ser un número mayor a cero.")
+		fmt.Println("[ERROR] El tamaño debe ser un número mayor a cero.")
 		return
 	}
 
@@ -135,7 +143,7 @@ func analizarMkdisk(parametros map[string]string) {
 	if val, ok := parametros["fit"]; ok {
 		fit = strings.ToLower(val)
 		if fit != "bf" && fit != "ff" && fit != "wf" {
-			fmt.Println("Error: Ajuste no válido.")
+			fmt.Println("[ERROR] Ajuste no válido.")
 			return
 		}
 	}
@@ -144,7 +152,7 @@ func analizarMkdisk(parametros map[string]string) {
 	if val, ok := parametros["unit"]; ok {
 		unit = strings.ToLower(val)
 		if unit != "k" && unit != "m" {
-			fmt.Println("Error: Unidad no válida.")
+			fmt.Println("[ERROR] Unidad no válida.")
 			return
 		}
 	}
@@ -156,7 +164,7 @@ func analizarRmdisk(parametros map[string]string) {
 	path, okPath := parametros["path"]
 
 	if !okPath {
-		fmt.Println("Error: Falta el parámetro obligatorio -path para RMDISK.")
+		fmt.Println("[ERROR] Falta el parámetro obligatorio -path para RMDISK.")
 		return
 	}
 
@@ -169,40 +177,49 @@ func analizarFdisk(parametros map[string]string) {
 	name, okName := parametros["name"]
 
 	if !okSize || !okPath || !okName {
-		fmt.Println("Error: Faltan parámetros obligatorios para FDISK.")
+		fmt.Println("[ERROR] Faltan parámetros obligatorios para FDISK.")
 		return
 	}
 
 	size, err := strconv.Atoi(sizeStr)
 	if err != nil || size <= 0 {
-		fmt.Println("Error: El tamaño debe ser un número mayor a cero.")
+		fmt.Println("[ERROR] El tamaño debe ser un número mayor a cero.")
 		return
 	}
 
 	unit := "k"
 	if val, ok := parametros["unit"]; ok {
 		unit = strings.ToLower(val)
-		if unit != "b" && unit != "k" && unit != "m" {
-			fmt.Println("Error: Unidad no válida.")
-			return
+		if len(unit) > 0 {
+			letra := unit[0]
+			if letra != 'b' && letra != 'k' && letra != 'm' {
+				fmt.Println("[ERROR] Unidad no válida.")
+				return
+			}
 		}
 	}
 
 	tipo := "p"
 	if val, ok := parametros["type"]; ok {
 		tipo = strings.ToLower(val)
-		if tipo != "p" && tipo != "e" && tipo != "l" {
-			fmt.Println("Error: Tipo no válido.")
-			return
+		if len(tipo) > 0 {
+			letra := tipo[0]
+			if letra != 'p' && letra != 'e' && letra != 'l' {
+				fmt.Println("[ERROR] Tipo no válido.")
+				return
+			}
 		}
 	}
 
 	fit := "wf"
 	if val, ok := parametros["fit"]; ok {
 		fit = strings.ToLower(val)
-		if fit != "bf" && fit != "ff" && fit != "wf" {
-			fmt.Println("Error: Ajuste no válido.")
-			return
+		if len(fit) > 0 {
+			letra := fit[0]
+			if letra != 'b' && letra != 'f' && letra != 'w' {
+				fmt.Println("[ERROR] Ajuste no válido.")
+				return
+			}
 		}
 	}
 
@@ -214,7 +231,7 @@ func analizarMount(parametros map[string]string) {
 	name, okName := parametros["name"]
 
 	if !okPath || !okName {
-		fmt.Println("Error: Faltan parámetros obligatorios para MOUNT.")
+		fmt.Println("[ERROR] Faltan parámetros obligatorios para MOUNT.")
 		return
 	}
 
@@ -225,7 +242,7 @@ func analizarMkfs(parametros map[string]string) {
 	id, okId := parametros["id"]
 
 	if !okId {
-		fmt.Println("Error: Falta el parámetro obligatorio -id para MKFS.")
+		fmt.Println("[ERROR] Falta el parámetro obligatorio -id para MKFS.")
 		return
 	}
 
@@ -233,7 +250,7 @@ func analizarMkfs(parametros map[string]string) {
 	if val, ok := parametros["type"]; ok {
 		tipo = strings.ToLower(val)
 		if tipo != "full" {
-			fmt.Println("Error: Tipo no válido.")
+			fmt.Println("[ERROR] Tipo no válido.")
 			return
 		}
 	}
@@ -260,11 +277,13 @@ func analizarCat(parametros map[string]string) {
 	}
 
 	if len(archivos) == 0 {
-		fmt.Println("Error: Falta el parámetro obligatorio -file para CAT.")
+		fmt.Println("[ERROR] Falta el parámetro obligatorio -file o -file1 para CAT.")
 		return
 	}
 
-	filesystem.Cat(archivos)
+	for _, archivoRuta := range archivos {
+		filesystem.Cat(archivoRuta)
+	}
 }
 
 func analizarLogin(parametros map[string]string) {
@@ -273,7 +292,7 @@ func analizarLogin(parametros map[string]string) {
 	id, okId := parametros["id"]
 
 	if !okUser || !okPass || !okId {
-		fmt.Println("Error: Faltan parámetros obligatorios para LOGIN.")
+		fmt.Println("[ERROR] Faltan parámetros obligatorios para LOGIN.")
 		return
 	}
 
@@ -282,7 +301,7 @@ func analizarLogin(parametros map[string]string) {
 
 func analizarLogout(parametros map[string]string) {
 	if len(parametros) > 0 {
-		fmt.Println("Error: LOGOUT no debe recibir parámetros.")
+		fmt.Println("[ERROR] LOGOUT no debe recibir parámetros.")
 		return
 	}
 
@@ -293,7 +312,7 @@ func analizarMkgrp(parametros map[string]string) {
 	name, okName := parametros["name"]
 
 	if !okName {
-		fmt.Println("Error: Falta el parámetro obligatorio -name para MKGRP.")
+		fmt.Println("[ERROR] Falta el parámetro obligatorio -name para MKGRP.")
 		return
 	}
 
@@ -304,7 +323,7 @@ func analizarRmgrp(parametros map[string]string) {
 	name, okName := parametros["name"]
 
 	if !okName {
-		fmt.Println("Error: Falta el parámetro obligatorio -name para RMGRP.")
+		fmt.Println("[ERROR] Falta el parámetro obligatorio -name para RMGRP.")
 		return
 	}
 
@@ -317,7 +336,7 @@ func analizarMkusr(parametros map[string]string) {
 	grp, okG := parametros["grp"]
 
 	if !okU || !okP || !okG {
-		fmt.Println("Error: Faltan parámetros obligatorios para MKUSR.")
+		fmt.Println("[ERROR] Faltan parámetros obligatorios para MKUSR.")
 		return
 	}
 
@@ -329,7 +348,7 @@ func analizarMkdir(parametros map[string]string) {
 	_, p := parametros["p"]
 
 	if !ok {
-		fmt.Println("Error: Falta -path.")
+		fmt.Println("[ERROR] Falta -path.")
 		return
 	}
 	filesystem.Mkdir(path, p)
@@ -337,13 +356,97 @@ func analizarMkdir(parametros map[string]string) {
 
 func analizarMkfile(parametros map[string]string) {
 	path, ok := parametros["path"]
-	size := parametros["size"]
-	cont := parametros["cont"]
-	_, r := parametros["r"]
-
 	if !ok {
-		fmt.Println("Error: Falta -path.")
+		fmt.Println("[ERROR] Falta -path.")
 		return
 	}
-	filesystem.Mkfile(path, size, cont, r)
+
+	size := 0
+	if val, ok := parametros["size"]; ok {
+		size, _ = strconv.Atoi(val)
+	}
+
+	_, r := parametros["r"]
+
+	filesystem.Mkfile(path, r, size)
+}
+
+func analizarPause(parametros map[string]string) {
+	fmt.Println("\n[PAUSE] Ejecución pausada. Presiona 'Enter' para continuar...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
+}
+
+func analizarRep(parametros map[string]string) {
+	name, okName := parametros["name"]
+	path, okPath := parametros["path"]
+	id, okId := parametros["id"]
+	pathFileLs, okPathFileLs := parametros["path_file_ls"]
+
+	if !okName || !okPath || !okId {
+		fmt.Println("[ERROR] Faltan parámetros obligatorios para REP.")
+		return
+	}
+
+	name = strings.ToLower(name)
+	nombresValidos := map[string]bool{
+		"mbr": true, "disk": true, "inode": true, "block": true,
+		"bm_inode": true, "bm_block": true, "sb": true,
+		"file": true, "ls": true, "tree": true,
+	}
+
+	if !nombresValidos[name] {
+		fmt.Println("[ERROR] El nombre del reporte no es válido.")
+		return
+	}
+
+	if (name == "file" || name == "ls") && !okPathFileLs {
+		fmt.Println("[ERROR] Falta el parámetro -path_file_ls para el reporte solicitado.")
+		return
+	}
+
+	if !okPathFileLs {
+		pathFileLs = ""
+	}
+
+	report.GenerarReporte(name, path, id, pathFileLs)
+}
+
+func analizarExecute(parametros map[string]string) {
+	ruta, ok := parametros["path"]
+	if !ok {
+		fmt.Println("[ERROR] Falta el parámetro -path en el comando execute.")
+		return
+	}
+
+	archivo, err := os.Open(ruta)
+	if err != nil {
+		fmt.Println("Error al abrir el script:", err)
+		return
+	}
+	defer archivo.Close()
+
+	scanner := bufio.NewScanner(archivo)
+	for scanner.Scan() {
+		linea := strings.TrimSpace(scanner.Text())
+
+		if linea == "" {
+			continue
+		}
+
+		AnalizarComando(linea)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error al leer el archivo:", err)
+	}
+}
+
+func analizarUnmount(parametros map[string]string) {
+	id, ok := parametros["id"]
+	if !ok {
+		fmt.Println("[ERROR] Falta el parámetro obligatorio -id para UNMOUNT.")
+		return
+	}
+
+	mount.Unmount(id)
 }
