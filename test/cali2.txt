@@ -20,7 +20,7 @@ logout
 PAUSE
 Login -pass=123 -user=root -id=001A
 
-pause
+pause 
 
 #CREACION DE GRUPOS
 mkgrp -naMe=dinaarpb

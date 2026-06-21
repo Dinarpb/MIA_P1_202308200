@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel de Administración - EXT2</title>
+    <style>
+        :root {
+            --bg-dark: #1e1e2e;
+            --panel-bg: #282a36;
+            --text-main: #f8f8f2;
+            --accent: #50fa7b;
+            --accent-hover: #5af78e;
+            --border: #44475a;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+        .card {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 14px; margin-bottom: 5px; color: #ccc; }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 8px;
+            background-color: #191a21;
+            color: white;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            background-color: var(--accent);
+            color: #282a36;
+            border: none;
+            padding: 10px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover { background-color: var(--accent-hover); }
+        .console-output {
+            background-color: #000;
+            color: #00ff00;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 4px;
+            min-height: 100px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="column">
+        <div class="card">
+            <h3>💾 Crear Disco (MKDISK)</h3>
+            <form id="formMkdisk">
+                <div class="input-group">
+                    <label>Tamaño</label>
+                    <input type="number" id="mkSize" required min="1">
+                </div>
+                <div class="input-group">
+                    <label>Unidad</label>
+                    <select id="mkUnit">
+                        <option value="M">Megabytes (M)</option>
+                        <option value="K">Kilobytes (K)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Ruta (Path)</label>
+                    <input type="text" id="mkPath" placeholder="/home/discos/disco1.dsk" required>
+                </div>
+                <button type="submit">Crear Disco</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>🗑️ Eliminar Disco (RMDISK)</h3>
+            <form id="formRmdisk">
+                <div class="input-group">
+                    <label>Ruta del disco a eliminar</label>
+                    <input type="text" id="rmPath" required>
+                </div>
+                <button type="submit" style="background-color: #ff5555; color: white;">Eliminar Disco</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>🔌 Montar Partición (MOUNT)</h3>
+            <form id="formMount">
+                <div class="input-group">
+                    <label>Ruta del Disco</label>
+                    <input type="text" id="mntPath" required>
+                </div>
+                <div class="input-group">
+                    <label>Nombre de Partición</label>
+                    <input type="text" id="mntName" required>
+                </div>
+                <button type="submit" style="background-color: #8be9fd;">Montar Partición</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="column">
+        <div class="card">
+            <h3>🗄️ Crear Partición (FDISK)</h3>
+            <form id="formFdisk">
+                <div class="input-group">
+                    <label>Tamaño</label>
+                    <input type="number" id="fdSize" required min="1">
+                </div>
+                <div class="input-group">
+                <label>Unidad</label>
+                <select id="fdUnit">
+                    <option value="m">Megabytes (M)</option>
+                    <option value="k">Kilobytes (K)</option>
+                </select>
+            </div>
+                <div class="input-group">
+                    <label>Ruta del Disco</label>
+                    <input type="text" id="fdPath" required>
+                </div>
+                <div class="input-group">
+                    <label>Nombre de Partición</label>
+                    <input type="text" id="fdName" required>
+                </div>
+                <div class="input-group">
+                    <label>Tipo</label>
+                    <select id="fdType">
+                        <option value="P">Primaria (P)</option>
+                        <option value="E">Extendida (E)</option>
+                        <option value="L">Lógica (L)</option>
+                    </select>
+                </div>
+                <button type="submit">Crear Partición</button>
+            </form>
+        </div>
+
+        
+        
+        <div class="card">
+            <h3>📤 Desmontar Partición (UNMOUNT)</h3>
+            <form id="formUnmount">
+                <div class="input-group">
+                    <label>ID de la partición (ej. 541a)</label>
+                    <input type="text" id="unmountId" required placeholder="541a">
+                </div>
+                <button type="submit" style="background-color: #ffb86c; color: #282a36;">Desmontar</button>
+            </form>
+        </div>
+    </div>
+
+    
+
+    <div class="column">
+        <div class="card" style="flex-grow: 1; display: flex; flex-direction: column;">
+            <h3>🖥️ Registro de Operaciones</h3>
+            <div id="consola" class="console-output">Esperando acciones...</div>
+            
+            <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);">
+                <p style="font-size: 14px; color: #ccc;">Una vez montada tu partición, puedes iniciar sesión.</p>
+                <button onclick="window.location.href='login.html'" style="background-color: #bd93f9;">Ir al Login ➔</button>
+            </div>
+        </div>
+        <div class="card">
+            <h3>🧹 Formatear Partición (MKFS)</h3>
+            <form id="formMkfs">
+                <div class="input-group">
+                    <label>ID de la partición (ej. 001A)</label>
+                    <input type="text" id="fsId" required placeholder="001A">
+                </div>
+                <div class="input-group">
+                    <label>Tipo de formato</label>
+                    <select id="fsType">
+                        <option value="full">Full</option>
+                        <option value="fast">Fast</option>
+                    </select>
+                </div>
+                <button type="submit" style="background-color: #ffb86c; color: #282a36;">Formatear Partición</button>
+            </form>
+        </div>
+    </div>
+
+    
+
+    <script>
+        // Función central para enviar comandos a Go
+        async function ejecutar(comandoStr) {
+            const consola = document.getElementById('consola');
+            consola.innerHTML += `\n> ${comandoStr}`;
+            
+            try {
+                const response = await fetch('http://localhost:3000/ejecutar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comando: comandoStr })
+                });
+                const data = await response.json();
+                consola.innerHTML += `\n${data.output || "Ejecutado sin salida en consola."}\n`;
+            } catch (error) {
+                consola.innerHTML += `\n[ERROR] No se pudo conectar a la API.\n`;
+            }
+            consola.scrollTop = consola.scrollHeight;
+        }
+
+        // Interceptar formularios
+        document.getElementById('formMkdisk').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const size = document.getElementById('mkSize').value;
+            const unit = document.getElementById('mkUnit').value;
+            const path = document.getElementById('mkPath').value;
+            ejecutar(`mkdisk -size=${size} -unit=${unit} -path="${path}"`);
+        });
+
+        document.getElementById('formRmdisk').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const path = document.getElementById('rmPath').value;
+
+            // Pedimos confirmación antes de enviar el comando
+            if (confirm("¿Estás segura de que deseas eliminar permanentemente el disco: " + path + "?")) {
+                ejecutar(`rmdisk -path="${path}"`);
+            } else {
+                document.getElementById('consola').innerHTML += "\n> Operación cancelada por el usuario.\n";
+            }
+        });
+
+        document.getElementById('formFdisk').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const size = document.getElementById('fdSize').value;
+            const path = document.getElementById('fdPath').value;
+            const name = document.getElementById('fdName').value;
+            const type = document.getElementById('fdType').value;
+            const unit = document.getElementById('fdUnit').value; // <-- Capturamos la unidad
+
+            // Enviamos el comando incluyendo el parámetro -unit
+            ejecutar(`fdisk -size=${size} -unit=${unit} -path="${path}" -name="${name}" -type=${type}`);
+        });
+
+        document.getElementById('formMount').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const path = document.getElementById('mntPath').value;
+            const name = document.getElementById('mntName').value;
+            ejecutar(`mount -path="${path}" -name="${name}"`);
+        });
+
+        document.getElementById('formUnmount').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = document.getElementById('unmountId').value;
+            ejecutar(`unmount -id=${id}`);
+        });
+        
+        document.getElementById('formMkfs').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const id = document.getElementById('fsId').value;
+        const type = document.getElementById('fsType').value;
+
+        if (confirm("⚠️ ¡CUIDADO! Esto borrará todos los datos de la partición " + id + ". ¿Continuar?")) {
+            ejecutar(`mkfs -id=${id} -type=${type}`);
+        }
+    });
+    </script>
+</body>
+</html>

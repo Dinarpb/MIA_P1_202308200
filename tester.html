@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Probador de API de Dina</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background-color: #f4f4f9; }
+        input { width: 80%; padding: 10px; margin-bottom: 10px; font-size: 16px; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        pre { background: #333; color: #0f0; padding: 15px; border-radius: 5px; min-height: 100px; }
+    </style>
+</head>
+<body>
+
+    <h2>Terminal Web de Dina</h2>
+    <input type="text" id="comandoInput" placeholder="Escribe tu comando aquí (ej. rename -path=...)">
+    <br>
+    <button onclick="enviarComando()">Ejecutar Comando</button>
+
+    <h3>Respuesta del Servidor (JSON):</h3>
+    <pre id="respuestaOutput">Esperando comando...</pre>
+
+    <script>
+        async function enviarComando() {
+            const comando = document.getElementById('comandoInput').value;
+            const output = document.getElementById('respuestaOutput');
+            output.innerText = "Enviando al servidor Go...";
+
+            try {
+                // Aquí es donde la Magia POST sucede
+                const response = await fetch('http://localhost:3000/ejecutar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comando: comando }) // Empaquetamos el comando en JSON
+                });
+
+                const data = await response.json();
+                output.innerText = JSON.stringify(data, null, 4); // Mostramos la respuesta bonita
+            } catch (error) {
+                output.innerText = "Error de conexión: Asegúrate de que el servidor Go esté corriendo en el puerto 3000.";
+            }
+        }
+    </script>
+</body>
+</html>

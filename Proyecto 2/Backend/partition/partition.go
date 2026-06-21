@@ -11,7 +11,8 @@ import (
 )
 
 func CreatePartition(tamanio int64, unidad, path, tipo, ajuste, nombre string) {
-
+	
+	
 	newPartition := types.Partition{
 		Part_status: '1',
 		Part_type:   tipo[0],

@@ -53,7 +53,7 @@ func AnalizarComando(entrada string) {
 	case "mkdisk":
 		analizarMkdisk(parametros)
 	case "rmdisk":
-		analizarRmdisk(parametros)
+		analizarRmdisk(parametros["path"])
 	case "fdisk":
 		analizarFdisk(parametros)
 	case "mount":
@@ -99,6 +99,74 @@ func AnalizarComando(entrada string) {
 		analizarRep(parametros)
 	case "execute", "exec":
 		analizarExecute(parametros)
+	case "rename":
+		path, _ := parametros["path"]
+		name, _ := parametros["name"]
+		if path == "" || name == "" {
+			fmt.Println("[ERROR] Comando RENAME requiere los parámetros -path y -name.")
+		} else {
+			filesystem.Rename(path, name)
+		}
+	case "remove":
+		path, _ := parametros["path"]
+		if path == "" {
+			fmt.Println("[ERROR] Comando REMOVE requiere el parámetro -path.")
+		} else {
+			filesystem.Remove(path)
+		}
+	case "edit":
+		path, okPath := parametros["path"]
+		contenido, okContenido := parametros["contenido"]
+
+		if !okPath || !okContenido || path == "" || contenido == "" {
+			fmt.Println("[ERROR] El comando EDIT requiere obligatoriamente -path y -contenido.")
+		} else {
+			filesystem.Edit(path, contenido)
+		}
+	case "move":
+		path := ""
+		destino := ""
+
+		// Recorremos los parámetros para extraer los valores
+		for _, param := range parametros {
+			// Asumiendo que tu mapa de parámetros es map[string]string o similar
+			// Ajusta esto según cómo guardes tus parámetros en el switch
+			if strings.HasPrefix(strings.ToLower(param), "-path=") {
+				path = strings.Split(param, "=")[1]
+			} else if strings.HasPrefix(strings.ToLower(param), "-destino=") {
+				destino = strings.Split(param, "=")[1]
+			}
+		}
+
+		// Si prefieres usar el mapa directamente como lo hacías con mkdir:
+		// path = parametros["path"]
+		// destino = parametros["destino"]
+
+		if path == "" || destino == "" {
+			fmt.Println("[ERROR] El comando MOVE requiere -path y -destino.")
+		} else {
+			filesystem.Move(path, destino)
+		}
+	case "copy":
+		path := ""
+		destino := ""
+
+		// Recorremos los parámetros para extraer los valores
+		for _, param := range parametros {
+			// Asumiendo que tu mapa de parámetros es map[string]string o similar
+			// Ajusta esto según cómo guardes tus parámetros en el switch
+			if strings.HasPrefix(strings.ToLower(param), "-path=") {
+				path = strings.Split(param, "=")[1]
+			} else if strings.HasPrefix(strings.ToLower(param), "-destino=") {
+				destino = strings.Split(param, "=")[1]
+			}
+		}
+
+		if path == "" || destino == "" {
+			fmt.Println("[ERROR] El comando COPY requiere -path y -destino.")
+		} else {
+			filesystem.Copy(path, destino)
+		}
 	default:
 		if strings.HasPrefix(comando, "#") {
 			fmt.Println(entrada)
@@ -160,69 +228,78 @@ func analizarMkdisk(parametros map[string]string) {
 	disk.CreateDisk(int64(size), fit, unit, path)
 }
 
-func analizarRmdisk(parametros map[string]string) {
-	path, okPath := parametros["path"]
+func analizarRmdisk(parametros string) {
 
-	if !okPath {
-		fmt.Println("[ERROR] Falta el parámetro obligatorio -path para RMDISK.")
-		return
+	println("RMDISK ejecutado con éxito.")
+	// Validación de seguridad antes de llamar a la función
+	if parametros == "" {
+		fmt.Println("[ERROR] RMDISK requiere el parámetro -path.")
+	} else {
+		// Si el path no está vacío, llamamos a la función
+		println("RMDISK ejecutado con éxito. Path: " + parametros)
+		disk.DeleteDisk(parametros)
 	}
-
-	disk.DeleteDisk(path)
 }
 
 func analizarFdisk(parametros map[string]string) {
-	sizeStr, okSize := parametros["size"]
+	
 	path, okPath := parametros["path"]
 	name, okName := parametros["name"]
 
-	if !okSize || !okPath || !okName {
-		fmt.Println("[ERROR] Faltan parámetros obligatorios para FDISK.")
+	if !okPath || !okName {
+		fmt.Println("[ERROR] FDISK requiere obligatoriamente -path y -name.")
 		return
 	}
 
-	size, err := strconv.Atoi(sizeStr)
-	if err != nil || size <= 0 {
-		fmt.Println("[ERROR] El tamaño debe ser un número mayor a cero.")
+	// --- RAMA A: ¿Es un DELETE? ---
+	if deleteVal, ok := parametros["delete"]; ok {
+		// Llamamos a la lógica de borrado que definimos antes
+		addVal := ""
+		unit := "k"
+		size := int(0)
+		filesystem.Fdisk(path, name, deleteVal, addVal, unit, size)
 		return
 	}
 
+	// --- RAMA B: ¿Es un ADD? ---
+	if addVal, ok := parametros["add"]; ok {
+		deleteVal := ""
+		size := int(0)
+		unit := "k"
+		if val, okUnit := parametros["unit"]; okUnit {
+			unit = strings.ToLower(val)
+		}
+		filesystem.Fdisk(path, name, deleteVal, addVal, unit, size)
+		return
+	}
+
+	// --- RAMA C: Es CREACIÓN (Tu lógica original de Fase 1) ---
+	// Aquí sí pedimos los parámetros obligatorios de creación
+	sizeStr, okSize := parametros["size"]
+	if !okSize {
+		fmt.Println("[ERROR] Falta -size para crear partición.")
+		return
+	}
+
+	size, _ := strconv.Atoi(sizeStr)
+
+	// Tus validaciones originales de unit, type, fit...
 	unit := "k"
 	if val, ok := parametros["unit"]; ok {
 		unit = strings.ToLower(val)
-		if len(unit) > 0 {
-			letra := unit[0]
-			if letra != 'b' && letra != 'k' && letra != 'm' {
-				fmt.Println("[ERROR] Unidad no válida.")
-				return
-			}
-		}
 	}
 
 	tipo := "p"
 	if val, ok := parametros["type"]; ok {
 		tipo = strings.ToLower(val)
-		if len(tipo) > 0 {
-			letra := tipo[0]
-			if letra != 'p' && letra != 'e' && letra != 'l' {
-				fmt.Println("[ERROR] Tipo no válido.")
-				return
-			}
-		}
 	}
 
 	fit := "wf"
 	if val, ok := parametros["fit"]; ok {
 		fit = strings.ToLower(val)
-		if len(fit) > 0 {
-			letra := fit[0]
-			if letra != 'b' && letra != 'f' && letra != 'w' {
-				fmt.Println("[ERROR] Ajuste no válido.")
-				return
-			}
-		}
 	}
 
+	// Llamada a tu función original de creación
 	partition.CreatePartition(int64(size), unit, path, tipo, fit, name)
 }
 

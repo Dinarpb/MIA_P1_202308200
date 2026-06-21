@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Explorador de Archivos - EXT2</title>
+    <style>
+        :root {
+            --bg-dark: #1e1e2e;
+            --panel-bg: #282a36;
+            --text-main: #f8f8f2;
+            --accent: #8be9fd;
+            --folder-color: #f1fa8c;
+            --file-color: #bd93f9;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* Barra lateral (Árbol de directorios) */
+        .sidebar {
+            width: 250px;
+            background-color: #191a21;
+            padding: 20px;
+            border-right: 1px solid #444;
+            overflow-y: auto;
+        }
+        .sidebar h3 {
+            color: var(--accent);
+            margin-top: 0;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+        .tree-item {
+            cursor: pointer;
+            padding: 5px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: 0.2s;
+        }
+        .tree-item:hover { color: var(--accent); }
+        
+        /* Área principal (Contenido de la carpeta) */
+        .main-content {
+            flex-grow: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--panel-bg);
+        }
+        .breadcrumb {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: var(--accent);
+            background: #191a21;
+            padding: 10px 15px;
+            border-radius: 5px;
+        }
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 20px;
+            overflow-y: auto;
+        }
+        .grid-item {
+            background-color: #383a59;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        .grid-item:hover {
+            transform: translateY(-5px);
+            background-color: #44475a;
+        }
+        .icon { font-size: 40px; margin-bottom: 10px; }
+        .item-name { font-size: 14px; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h3>🗄️ Sistema de Archivos</h3>
+        <div id="treeView">
+
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="breadcrumb" id="rutaActual">/home/dinaarpb</div>
+        
+        <div class="grid-container" id="fileGrid">
+            <div class="grid-item">
+                <div class="icon">📁</div>
+                <div class="item-name">docs</div>
+            </div>
+            <div class="grid-item">
+                <div class="icon">📄</div>
+                <div class="item-name">reporte.txt</div>
+            </div>
+            <div class="grid-item">
+                <div class="icon">📄</div>
+                <div class="item-name">users.txt</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function cargarCarpeta(ruta) {
+            document.getElementById('rutaActual').innerText = ruta;
+            const grid = document.getElementById('fileGrid');
+            
+            grid.innerHTML = "<p style='padding: 20px;'>Cargando archivos desde el disco...</p>";
+
+            try {
+                // Hacemos la petición GET a tu API de Go
+                const response = await fetch(`http://localhost:3000/explorar?ruta=${ruta}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    grid.innerHTML = `<p style='color: var(--error); padding: 20px;'>Error: ${data.error}</p>`;
+                    return;
+                }
+
+                grid.innerHTML = ""; // Limpiar el grid
+
+                // Si la carpeta está vacía
+                if (!data.archivos || data.archivos.length === 0) {
+                    grid.innerHTML = "<p style='padding: 20px;'>La carpeta está vacía.</p>";
+                    return;
+                }
+
+                // Dibujar cada archivo/carpeta en la interfaz
+                data.archivos.forEach(archivo => {
+                    // Si es '0' es carpeta 📁, si es '1' es archivo 📄
+                    const icono = archivo.tipo === '0' ? '📁' : '📄';
+                    const colorIcono = archivo.tipo === '0' ? 'var(--folder-color)' : 'var(--file-color)';
+                    
+                    // Si es carpeta, al hacer clic entramos en ella. Si es archivo, no hacemos nada (por ahora).
+                    let onclickAction = "";
+                    if (archivo.tipo === '0' && archivo.nombre !== '.' && archivo.nombre !== '..') {
+                        // Construir la nueva ruta correctamente
+                        const nuevaRuta = ruta === '/' ? `/${archivo.nombre}` : `${ruta}/${archivo.nombre}`;
+                        onclickAction = `onclick="cargarCarpeta('${nuevaRuta}')"`;
+                    }
+
+                    grid.innerHTML += `
+                        <div class="grid-item" ${onclickAction}>
+                            <div class="icon" style="color: ${colorIcono};">${icono}</div>
+                            <div class="item-name">${archivo.nombre}</div>
+                        </div>`;
+                });
+
+            } catch (error) {
+                grid.innerHTML = "<p style='color: var(--error); padding: 20px;'>Error de conexión con el servidor Go.</p>";
+            }
+        }
+
+        // Cargar la carpeta raíz ("/") automáticamente al abrir la página
+        window.onload = () => {
+            cargarCarpeta('/');
+        };
+
+        async function cargarSistema() {
+            const treeView = document.getElementById('treeView');
+            const res = await fetch('http://localhost:3000/sistema');
+            const discos = await res.json();
+
+            treeView.innerHTML = ""; // Limpiar
+
+            discos.forEach(disco => {
+                let discoHtml = `<div class="tree-disk">💾 ${disco.path.split('/').pop()}</div>`;
+                
+                disco.particiones.forEach(p => {
+                    const estado = p.montada ? 
+                        `<span style="color:var(--accent)">● Montada (${p.id})</span>` : 
+                        `<span style="color:#666">○ Desmontada</span>`;
+                    
+                    discoHtml += `
+                        <div class="tree-part" style="margin-left: 20px; cursor: pointer;" 
+                            onclick="${p.montada ? `cargarCarpeta('/')` : 'alert(\'Partición no montada\')'}">
+                            💿 ${p.nombre} ${estado}
+                        </div>`;
+                });
+                treeView.innerHTML += discoHtml;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -48,9 +48,11 @@ func BuscarInodoPorRuta(archivo *os.File, sb types.SuperBloque, ruta string) (in
 	var inodoActual types.Inodo
 	inodoActualIndex := 0
 
+	// Limpieza absoluta
 	ruta = strings.TrimSpace(ruta)
 	ruta = strings.ReplaceAll(ruta, "\r", "")
 	ruta = strings.ReplaceAll(ruta, "\n", "")
+	ruta = strings.ReplaceAll(ruta, "\"", "")
 
 	archivo.Seek(int64(sb.S_inode_start), 0)
 	binary.Read(archivo, binary.LittleEndian, &inodoActual)
@@ -69,11 +71,14 @@ func BuscarInodoPorRuta(archivo *os.File, sb types.SuperBloque, ruta string) (in
 
 	for _, paso := range pasosLimpios {
 		encontrado := false
+		fmt.Printf("🔍 Buscando: [%s] dentro del Inodo %d\n", paso, inodoActualIndex)
 
 		for i := 0; i < 12; i++ {
 			if inodoActual.I_block[i] != -1 {
 				var bc types.BloqueCarpeta
-				archivo.Seek(int64(sb.S_block_start)+(int64(inodoActual.I_block[i])*int64(sb.S_block_s)), 0)
+				// CORRECCIÓN MATEMÁTICA: Convertir a int64 ANTES de multiplicar
+				offset := int64(sb.S_block_start) + (int64(inodoActual.I_block[i]) * int64(sb.S_block_s))
+				archivo.Seek(offset, 0)
 				binary.Read(archivo, binary.LittleEndian, &bc)
 
 				for _, content := range bc.B_content {
@@ -84,9 +89,13 @@ func BuscarInodoPorRuta(archivo *os.File, sb types.SuperBloque, ruta string) (in
 						nombreItem = strings.ReplaceAll(nombreItem, "\n", "")
 						nombreItem = strings.ReplaceAll(nombreItem, "\"", "")
 
+						fmt.Printf("   -> Leído en disco: [%s] (Apunta al Inodo %d)\n", nombreItem, content.B_inodo)
+
 						if nombreItem == paso {
 							inodoActualIndex = int(content.B_inodo)
-							archivo.Seek(int64(sb.S_inode_start)+int64(int32(inodoActualIndex)*sb.S_inode_s), 0)
+							// CORRECCIÓN MATEMÁTICA
+							offsetInodo := int64(sb.S_inode_start) + (int64(inodoActualIndex) * int64(sb.S_inode_s))
+							archivo.Seek(offsetInodo, 0)
 							binary.Read(archivo, binary.LittleEndian, &inodoActual)
 							encontrado = true
 							break
@@ -100,6 +109,7 @@ func BuscarInodoPorRuta(archivo *os.File, sb types.SuperBloque, ruta string) (in
 		}
 
 		if !encontrado {
+			fmt.Printf("❌ ERROR FATAL: No existe [%s] dentro del Inodo %d\n\n", paso, inodoActualIndex)
 			return -1, types.Inodo{}, errors.New("ruta no encontrada: " + paso)
 		}
 	}
@@ -108,25 +118,27 @@ func BuscarInodoPorRuta(archivo *os.File, sb types.SuperBloque, ruta string) (in
 }
 
 func LeerArchivoUsers(archivo *os.File, sb types.SuperBloque, inodo types.Inodo) string {
-	contenidoTotal := ""
-	for i := 0; i < 12; i++ {
-		if inodo.I_block[i] != -1 {
-			var ba types.BloqueArchivo
-			archivo.Seek(int64(sb.S_block_start)+int64(inodo.I_block[i])*int64(sb.S_block_s), 0)
-			binary.Read(archivo, binary.LittleEndian, &ba)
-			contenidoTotal += string(ba.B_content[:])
-		}
-	}
+	// 1. Calcular la posición
+	bloqueIndex := inodo.I_block[0]
+	posicion := int64(sb.S_block_start) + (int64(bloqueIndex) * int64(sb.S_block_s))
 
-	if int64(len(contenidoTotal)) > inodo.I_size {
-		contenidoTotal = contenidoTotal[:inodo.I_size]
-	}
+	// 2. Crear un buffer del tamaño del bloque
+	buffer := make([]byte, sb.S_block_s)
 
-	return strings.TrimRight(contenidoTotal, "\x00")
+	// 3. Leer
+	archivo.Seek(posicion, 0)
+	archivo.Read(buffer)
+
+	// --- AQUÍ ESTÁ EL DEBUG CORRECTO ---
+	fmt.Printf("[DEBUG HEX] Bloque leído en pos %d: % X\n", posicion, buffer)
+	// -------------------------------------
+
+	// 4. Convertir a string
+	return string(bytes.Trim(buffer, "\x00"))
 }
 
 func EscribirArchivoUsers(archivo *os.File, sb *types.SuperBloque, inodoIndex int32, inodo *types.Inodo, contenidoNuevo string) {
-	inodo.I_size = int64(len(contenidoNuevo)) 
+	inodo.I_size = int64(len(contenidoNuevo))
 
 	for i := 0; i < 12; i++ {
 		pedazo := ""
@@ -141,10 +153,10 @@ func EscribirArchivoUsers(archivo *os.File, sb *types.SuperBloque, inodoIndex in
 		}
 
 		if pedazo == "" && inodo.I_block[i] != -1 {
-			var ba types.BloqueArchivo 
+			var ba types.BloqueArchivo
 			archivo.Seek(int64(sb.S_block_start)+int64(inodo.I_block[i])*int64(sb.S_block_s), 0)
 			binary.Write(archivo, binary.LittleEndian, &ba)
-			continue 
+			continue
 		}
 
 		if pedazo == "" && inodo.I_block[i] == -1 {
@@ -214,4 +226,27 @@ func ObtenerContextoParticion() (*os.File, types.SuperBloque, int32, types.Inodo
 	}
 
 	return archivo, sb, int32(inodoIndex), inodoUsers, partStart, nil
+}
+
+func WriteBlock(archivo *os.File, pos int64, data interface{}, blockSize int32) {
+	// 1. Nos ubicamos en la posición exacta
+	archivo.Seek(pos, 0)
+
+	// 2. Creamos el buffer real (1024 bytes)
+	buffer := make([]byte, blockSize)
+
+	// 3. Escribimos la data en un buffer temporal
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, data)
+
+	// ¡Si hay un error, esto nos avisará en la consola!
+	if err != nil {
+		fmt.Println("[ERROR CRÍTICO] Falló la serialización binaria:", err)
+	}
+
+	// 4. Copiamos y rellenamos el resto con ceros
+	copy(buffer, buf.Bytes())
+
+	// 5. Escribimos al disco físico
+	archivo.Write(buffer)
 }

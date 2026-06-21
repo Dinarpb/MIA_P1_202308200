@@ -20,3 +20,6 @@ func TienePermiso(uid int32, gid int32, inodo types.Inodo, operacion int) bool {
 
 	return (int(permisos[categoria]) & operacion) != 0
 }
+
+
+

@@ -15,13 +15,14 @@ import (
 func CalcularEstructuras(tamanioParticion int64) int64 {
 	tamanioSuperbloque := int64(unsafe.Sizeof(types.SuperBloque{}))
 	tamanioInodo := int64(unsafe.Sizeof(types.Inodo{}))
-	tamanioBloque := int64(unsafe.Sizeof(types.BloqueArchivo{}))
+
+	// ¡EL CAMBIO ESTÁ AQUÍ! Todo bloque mide 1024 bytes
+	tamanioBloque := int64(1024)
 
 	numerador := tamanioParticion - tamanioSuperbloque
 	denominador := 4 + tamanioInodo + (3 * tamanioBloque)
 
 	n := numerador / denominador
-
 	return n
 }
 
@@ -29,6 +30,7 @@ func Mkfs(id string, tipo string) {
 	var rutaDisco string
 	var tamanioParticion int64
 	var inicioParticion int64 = -1
+	const BLOCK_SIZE = 1024
 	encontrado := false
 
 	for _, disco := range global.DiscosMontados {
@@ -86,9 +88,8 @@ func Mkfs(id string, tipo string) {
 		S_mnt_count:         1,
 		S_magic:             0xEF53,
 		S_inode_s:           int32(unsafe.Sizeof(types.Inodo{})),
-		S_block_s:           int32(unsafe.Sizeof(types.BloqueCarpeta{})),
-		S_first_ino:         0,
-		S_first_blo:         0,
+		S_block_s:           int32(BLOCK_SIZE), S_first_ino: 0,
+		S_first_blo: 0,
 	}
 
 	// Calculamos en que byte arranca cada estructura
@@ -182,24 +183,34 @@ func Mkfs(id string, tipo string) {
 	// Escribir Inodos
 	archivo.Seek(int64(superBloque.S_inode_start), 0)
 	binary.Write(archivo, binary.LittleEndian, &inodoRaiz)
-
-	archivo.Seek(int64(superBloque.S_inode_start)+int64(unsafe.Sizeof(types.Inodo{})), 0)
 	binary.Write(archivo, binary.LittleEndian, &inodoUsers)
 
-	// Escribir Bloques
-	archivo.Seek(int64(superBloque.S_block_start), 0)
-	binary.Write(archivo, binary.LittleEndian, &bloqueRaiz)
+	// Escribir Bloques (USANDO LA FUNCIÓN SEGURA)
+	// Definimos el tamaño de bloque real
+	superBloque.S_block_s = int32(BLOCK_SIZE)
 
-	archivo.Seek(int64(superBloque.S_block_start)+int64(unsafe.Sizeof(types.BloqueCarpeta{})), 0)
-	binary.Write(archivo, binary.LittleEndian, &bloqueUsers)
+	// Escribir Bloque 0 (Raíz) en la posición S_block_start
+	utils.WriteBlock(archivo, int64(superBloque.S_block_start), &bloqueRaiz, BLOCK_SIZE)
 
-	superBloque.S_free_inodes_count -= 2
-	superBloque.S_free_blocks_count -= 2
-	superBloque.S_first_ino = 2
-	superBloque.S_first_blo = 2
+	// Escribir Bloque 1 (users.txt) en la posición S_block_start + 1024
+	offsetBloque1 := int64(superBloque.S_block_start) + int64(BLOCK_SIZE)
+	archivo.Seek(offsetBloque1, 0)
 
-	archivo.Seek(inicioParticion, 0)
-	binary.Write(archivo, binary.LittleEndian, &superBloque)
+	// Creamos un bloque vacío de 1024 bytes
+	bufferUsersDirecto := make([]byte, BLOCK_SIZE)
 
-	fmt.Printf("[ÉXITO] Formateo %s exitoso. Se escribirán %d inodos y %d bloques en la partición.\n", tipo, n, 3*n)
+	// Copiamos el string EXACTO directamente en los primeros bytes del buffer
+	texto := "1,G,root\n1,U,root,root,123\n"
+	copy(bufferUsersDirecto, texto)
+
+	// Lo escribimos al disco a la fuerza
+	_, errWrite := archivo.Write(bufferUsersDirecto)
+	if errWrite != nil {
+		fmt.Println("[ERROR FATAL] El sistema operativo no nos deja escribir:", errWrite)
+	} else {
+		fmt.Println("[DEBUG] users.txt inyectado a la fuerza en pos:", offsetBloque1)
+	}
+	// -------------------------------------------------------------
+
+	fmt.Printf("[ÉXITO] Formateo exitoso. Se escribirán %d inodos.\n", n)
 }

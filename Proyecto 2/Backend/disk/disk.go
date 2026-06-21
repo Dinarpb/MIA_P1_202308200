@@ -71,23 +71,20 @@ func CreateDisk(size int64, fit string, unit string, path string) {
 }
 
 func DeleteDisk(path string) {
-	if _, err := os.Stat(path); err != nil {
-		fmt.Println("[ERROR] El disco no existe en la ruta especificada.")
+	path = strings.ReplaceAll(path, "\"", "")
+	path = strings.TrimSpace(path)
+
+	// Verificar si existe
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		fmt.Println("[ERROR] El disco no existe en la ruta:", path)
 		return
 	}
 
-	fmt.Println("¿Seguro que desea eliminar el disco? (si/no)")
-	mess := ""
-	fmt.Scanln(&mess)
-
-	if strings.ToLower(mess) == "si" {
-		err := os.Remove(path)
-		if err != nil {
-			fmt.Println("[ERROR] Error al eliminar el disco:", err)
-		} else {
-			fmt.Printf("[ÉXITO] Disco eliminado exitosamente: %s\n", path)
-		}
+	// Intentar eliminar directamente (sin preguntar, porque ya preguntamos en el Frontend)
+	err := os.Remove(path)
+	if err != nil {
+		fmt.Println("[ERROR] Error al eliminar el disco:", err)
 	} else {
-		fmt.Println("Operación cancelada.")
+		fmt.Printf("[ÉXITO] Disco eliminado exitosamente: %s\n", path)
 	}
 }
