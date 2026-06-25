@@ -119,9 +119,6 @@ func Mkgrp(name string) {
 	defer archivo.Close()
 
 	contenido := utils.LeerArchivoUsers(archivo, sb, inodoUsers)
-
-	fmt.Printf("[DEBUG] Contenido de users.txt leído:\n'%s'\n", contenido)
-
 	lineas := strings.Split(contenido, "\n")
 	correlativoMaximo := 0
 
@@ -131,8 +128,6 @@ func Mkgrp(name string) {
 			continue
 		}
 		datos := strings.Split(linea, ",")
-
-		fmt.Printf("[DEBUG] Procesando línea: %v\n", datos)
 		if datos[1] == "G" {
 			if datos[0] != "0" && datos[2] == name {
 				fmt.Println("[ERROR] El grupo ya existe.")
@@ -145,11 +140,22 @@ func Mkgrp(name string) {
 		}
 	}
 
+	// Agregamos el grupo
 	contenido += fmt.Sprintf("%d,G,%s\n", correlativoMaximo+1, name)
-	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, contenido)
 
+	// --- AÑADE ESTO: Validar la escritura ---
+	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, contenido, partStart)
+
+	// Actualizar el SB en disco
 	archivo.Seek(partStart, 0)
-	binary.Write(archivo, binary.LittleEndian, &sb)
+	err = binary.Write(archivo, binary.LittleEndian, &sb)
+	if err != nil {
+		fmt.Println("[ERROR CRÍTICO] No se pudo guardar el SuperBloque:", err)
+		return
+	}
+
+	// ¡IMPORTANTE! Forzar que los datos salgan del buffer a tu disco real
+	archivo.Sync()
 
 	fmt.Printf("[ÉXITO] Grupo '%s' creado exitosamente.\n", name)
 }
@@ -160,7 +166,7 @@ func Rmgrp(name string) {
 		return
 	}
 
-	archivo, sb, inodoIndex, inodoUsers, _, err := utils.ObtenerContextoParticion()
+	archivo, sb, inodoIndex, inodoUsers, partStart, err := utils.ObtenerContextoParticion()
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -183,6 +189,11 @@ func Rmgrp(name string) {
 			continue
 		}
 
+		if strings.TrimSpace(datos[1]) == "U" && strings.TrimSpace(datos[2]) == name {
+			datos[2] = "root" // Mover usuario al grupo root automáticamente
+			nuevoContenido += strings.Join(datos, ",") + "\n"
+		}
+
 		nuevoContenido += linea + "\n"
 	}
 
@@ -191,13 +202,18 @@ func Rmgrp(name string) {
 		return
 	}
 
-	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido)
+	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido, partStart)
+	if err != nil {
+		fmt.Println("[ERROR] Falló la escritura en disco.")
+		return
+	}
 	fmt.Printf("[ÉXITO] Grupo '%s' eliminado físicamente del sistema.\n", name)
 }
 
+// 1. Asegúrate de que las variables en la firma sean exactamente estas:
 func Mkusr(user string, pass string, grp string) {
 	if !SesionActiva || UsuarioActual != "root" {
-		fmt.Println("[ERROR] Permisos insuficientes o sesión no activa.")
+		fmt.Println("[ERROR] Permisos insuficientes.")
 		return
 	}
 
@@ -213,34 +229,25 @@ func Mkusr(user string, pass string, grp string) {
 
 	correlativoMaximo := 0
 	grupoExiste := false
-	nuevoContenido := ""
 
+	// Validar grupo y calcular nuevo ID
 	for _, linea := range lineas {
 		if strings.TrimSpace(linea) == "" {
 			continue
 		}
-
 		datos := strings.Split(linea, ",")
-
 		tipo := strings.TrimSpace(datos[1])
 		idActualStr := strings.TrimSpace(datos[0])
 
-		if tipo == "G" && idActualStr != "0" && strings.TrimSpace(datos[2]) == grp {
+		if tipo == "G" && idActualStr != "0" && strings.TrimSpace(datos[2]) == grp { // Usando variable 'grp'
 			grupoExiste = true
 		}
-
 		if tipo == "U" {
-			if idActualStr != "0" && strings.TrimSpace(datos[3]) == user {
-				fmt.Println("[ERROR] El usuario ya existe en el sistema.")
-				return
-			}
 			idActual, _ := strconv.Atoi(idActualStr)
 			if idActual > correlativoMaximo {
 				correlativoMaximo = idActual
 			}
 		}
-
-		nuevoContenido += linea + "\n"
 	}
 
 	if !grupoExiste {
@@ -248,14 +255,20 @@ func Mkusr(user string, pass string, grp string) {
 		return
 	}
 
-	nuevoContenido += fmt.Sprintf("%d, U, %s, %s, %s\n", correlativoMaximo+1, grp, user, pass)
+	// Aquí usamos 'user', 'pass' y 'grp' que vienen en la firma de la función
+	nuevoUID := correlativoMaximo + 1
+	nuevaLinea := fmt.Sprintf("%d,U,%s,%s,%s\n", nuevoUID, grp, user, pass)
 
-	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido)
+	contenido += nuevaLinea
+
+	// Escribir al disco
+	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, contenido, partStart)
+	fmt.Println("[DEBUG] Escritura terminada.")
 
 	archivo.Seek(partStart, 0)
 	binary.Write(archivo, binary.LittleEndian, &sb)
 
-	fmt.Printf("[ÉXITO] Usuario '%s' creado correctamente.\n", user)
+	fmt.Printf("[ÉXITO] Usuario '%s' creado correctamente con ID %d.\n", user, nuevoUID)
 }
 
 func Rmusr(user string) {
@@ -264,7 +277,7 @@ func Rmusr(user string) {
 		return
 	}
 
-	archivo, sb, inodoIndex, inodoUsers, _, err := utils.ObtenerContextoParticion()
+	archivo, sb, inodoIndex, inodoUsers, partStart, err := utils.ObtenerContextoParticion()
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -300,7 +313,12 @@ func Rmusr(user string) {
 		return
 	}
 
-	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido)
+	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido, partStart)
+	if err != nil {
+		fmt.Println("[ERROR] Falló la escritura en disco.")
+		return
+	}
+
 	fmt.Printf("[ÉXITO] Usuario '%s' eliminado físicamente del sistema.\n", user)
 }
 
@@ -309,7 +327,7 @@ func Chgrp(user string, grp string) {
 		fmt.Println("[ERROR] Permisos insuficientes o sesión no activa.")
 		return
 	}
-	archivo, sb, inodoIndex, inodoUsers, _, err := utils.ObtenerContextoParticion()
+	archivo, sb, inodoIndex, inodoUsers, partStart, err := utils.ObtenerContextoParticion()
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -371,6 +389,11 @@ func Chgrp(user string, grp string) {
 		return
 	}
 
-	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido)
+	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido, partStart)
+	if err != nil {
+		fmt.Println("[ERROR] Falló la escritura en disco.")
+		return
+	}
+
 	fmt.Printf("[ÉXITO] El usuario '%s' ha sido movido al grupo '%s'.\n", user, grp)
 }

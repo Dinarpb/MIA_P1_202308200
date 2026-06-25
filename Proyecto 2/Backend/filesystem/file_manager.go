@@ -4,6 +4,7 @@ import (
 	"MIAP1/types"
 	"MIAP1/users"
 	"MIAP1/utils"
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -14,11 +15,31 @@ import (
 	"time"
 )
 
-func Mkfile(ruta string, r bool, size int) {
+func Mkfile(ruta string, r bool, size int, rutaContenido string) {
+	if !users.SesionActiva {
+		fmt.Println("[ERROR] No hay sesión activa.")
+		return
+	}
+
 	if size < 0 {
 		fmt.Println("[ERROR] El tamaño no puede ser negativo.")
 		return
 	}
+
+	// -cont tiene prioridad sobre -size, pero la ruta debe existir
+	var contenidoExterno string
+	usarCont := rutaContenido != ""
+	if usarCont {
+		datos, errLectura := os.ReadFile(rutaContenido)
+		if errLectura != nil {
+			fmt.Printf("[ERROR] No se pudo leer el archivo de contenido: '%s'.\n", rutaContenido)
+			return
+		}
+		contenidoExterno = string(datos)
+	}
+
+	ruta = strings.TrimSpace(ruta)
+	ruta = strings.ReplaceAll(ruta, "\"", "")
 
 	archivo, sb, _, _, partStart, err := utils.ObtenerContextoParticion()
 	if err != nil {
@@ -36,9 +57,11 @@ func Mkfile(ruta string, r bool, size int) {
 			fmt.Printf("[ERROR] La ruta '%s' no existe.\n", directorioPadre)
 			return
 		}
-
 		fmt.Printf("[INFO] Creando directorios intermedios para: %s\n", directorioPadre)
-
+		if !crearRutaRecursiva(archivo, &sb, directorioPadre, partStart) {
+			fmt.Println("[ERROR] Falló la creación de las carpetas padre.")
+			return
+		}
 		padreIndex, inodoPadre, errPadre = utils.BuscarInodoPorRuta(archivo, sb, directorioPadre)
 		if errPadre != nil {
 			fmt.Println("[ERROR] Falló la creación de las carpetas padre.")
@@ -46,71 +69,113 @@ func Mkfile(ruta string, r bool, size int) {
 		}
 	}
 
-	_, _, errArchivo := utils.BuscarInodoPorRuta(archivo, sb, ruta)
-	if errArchivo == nil {
-		fmt.Printf("[ERROR] El archivo '%s' ya existe.\n", ruta)
+	if !utils.TienePermiso(users.UsuarioActualUID, users.UsuarioActualGID, inodoPadre, 2) {
+		fmt.Printf("[ERROR] No tiene permiso de escritura sobre '%s'.\n", directorioPadre)
 		return
 	}
 
-	nuevoInodoIndex := sb.S_first_ino
-	sb.S_first_ino++
-	sb.S_free_inodes_count--
-
-	archivo.Seek(int64(sb.S_bm_inode_start)+int64(nuevoInodoIndex), 0)
-	binary.Write(archivo, binary.LittleEndian, byte('1'))
-
-	inodoArchivo := types.Inodo{
-		I_uid:  1,
-		I_gid:  1,
-		I_size: int64(size),
-		I_type: '1',
-		I_perm: [3]byte{'6', '6', '4'},
-	}
-	for i := 0; i < 15; i++ {
-		inodoArchivo.I_block[i] = -1
+	inodoIndexExistente, inodoExistente, errArchivo := utils.BuscarInodoPorRuta(archivo, sb, ruta)
+	sobreescribiendo := false
+	if errArchivo == nil {
+		if inodoExistente.I_type == '0' {
+			fmt.Printf("[ERROR] '%s' ya existe y es una carpeta.\n", ruta)
+			return
+		}
+		if !confirmarSobreescritura(ruta) {
+			fmt.Println("[INFO] Operación cancelada por el usuario.")
+			return
+		}
+		sobreescribiendo = true
 	}
 
-	contenidoNuevo := generarContenidoMkfile(size)
+	var contenidoNuevo string
+	if usarCont {
+		contenidoNuevo = contenidoExterno
+	} else {
+		contenidoNuevo = generarContenidoMkfile(size)
+	}
 
+	var inodoArchivo types.Inodo
+	var nuevoInodoIndex int32
+
+	if sobreescribiendo {
+		nuevoInodoIndex = int32(inodoIndexExistente)
+		inodoArchivo = inodoExistente
+		// Liberar los bloques viejos antes de escribir los nuevos
+		for i := 0; i < 12; i++ {
+			if inodoArchivo.I_block[i] != -1 {
+				archivo.Seek(int64(sb.S_bm_block_start)+int64(inodoArchivo.I_block[i]), 0)
+				binary.Write(archivo, binary.LittleEndian, byte(0))
+				sb.S_free_blocks_count++
+				inodoArchivo.I_block[i] = -1
+			}
+		}
+	} else {
+		nuevoInodoIndex = utils.BuscarInodoLibre(archivo, &sb)
+		if nuevoInodoIndex == -1 {
+			fmt.Println("[ERROR] No hay inodos libres. Disco lleno.")
+			return
+		}
+		inodoArchivo = types.Inodo{
+			I_uid:  users.UsuarioActualUID,
+			I_gid:  users.UsuarioActualGID,
+			I_type: '1',
+			I_perm: [3]byte{'6', '6', '4'},
+		}
+		for i := 0; i < 15; i++ {
+			inodoArchivo.I_block[i] = -1
+		}
+	}
+
+	inodoArchivo.I_size = int64(len(contenidoNuevo))
+	tiempo := time.Now().Format("2006-01-02 15:04:05")
+	copy(inodoArchivo.I_mtime[:], tiempo)
+	if !sobreescribiendo {
+		copy(inodoArchivo.I_atime[:], tiempo)
+		copy(inodoArchivo.I_ctime[:], tiempo)
+	}
+
+	restante := contenidoNuevo
 	for i := 0; i < 12; i++ {
-		if len(contenidoNuevo) == 0 {
+		if len(restante) == 0 {
 			break
 		}
-		pedazo := contenidoNuevo
-		if len(contenidoNuevo) > 64 {
-			pedazo = contenidoNuevo[:64]
-			contenidoNuevo = contenidoNuevo[64:]
+		pedazo := restante
+		if len(restante) > 64 {
+			pedazo = restante[:64]
+			restante = restante[64:]
 		} else {
-			contenidoNuevo = ""
+			restante = ""
 		}
 
-		inodoArchivo.I_block[i] = sb.S_first_blo
-		archivo.Seek(int64(sb.S_bm_block_start)+int64(sb.S_first_blo), 0)
-		binary.Write(archivo, binary.LittleEndian, byte('1'))
-		sb.S_first_blo++
-		sb.S_free_blocks_count--
+		nuevoBloque := utils.BuscarBloqueLibre(archivo, &sb)
+		if nuevoBloque == -1 {
+			fmt.Println("[ERROR] No hay bloques libres. Disco lleno.")
+			return
+		}
+		inodoArchivo.I_block[i] = nuevoBloque
 
 		var ba types.BloqueArchivo
 		copy(ba.B_content[:], pedazo)
-		archivo.Seek(int64(sb.S_block_start)+int64(inodoArchivo.I_block[i])*int64(sb.S_block_s), 0)
+		archivo.Seek(int64(sb.S_block_start)+int64(nuevoBloque)*int64(sb.S_block_s), 0)
 		binary.Write(archivo, binary.LittleEndian, &ba)
 	}
 
 	archivo.Seek(int64(sb.S_inode_start)+int64(nuevoInodoIndex)*int64(sb.S_inode_s), 0)
 	binary.Write(archivo, binary.LittleEndian, &inodoArchivo)
 
-	//Enlazar este nuevo archivo a la carpeta padre
-	exitoEnlace := EnlazarInodoEnCarpeta(archivo, &sb, inodoPadre, int32(padreIndex), nuevoInodoIndex, nombreArchivo)
-	if !exitoEnlace {
-		fmt.Println("[ERROR] No hay espacio en la carpeta padre para este archivo.")
-		return
+	if !sobreescribiendo {
+		exitoEnlace := EnlazarInodoEnCarpeta(archivo, &sb, inodoPadre, int32(padreIndex), nuevoInodoIndex, nombreArchivo)
+		if !exitoEnlace {
+			fmt.Println("[ERROR] No hay espacio en la carpeta padre para este archivo.")
+			return
+		}
 	}
 
-	//Actualizar el SuperBloque general
 	archivo.Seek(partStart, 0)
 	binary.Write(archivo, binary.LittleEndian, &sb)
 
-	fmt.Printf("[ÉXITO] Archivo creado en %s con tamaño %d bytes.\n", ruta, size)
+	fmt.Printf("[ÉXITO] Archivo creado en %s con tamaño %d bytes.\n", ruta, len(contenidoNuevo))
 }
 
 func Mkdir(ruta string, p bool) {
@@ -132,22 +197,21 @@ func Mkdir(ruta string, p bool) {
 	}
 	defer archivo.Close()
 
-	ruta = strings.TrimSuffix(ruta, "/")
-
-	//si viene sin pe, creamos la ruta recursiva
 	if p {
-		crearRutaRecursiva(archivo, &sb, ruta, partStart)
+		if !crearRutaRecursiva(archivo, &sb, ruta, partStart) {
+			return
+		}
+		archivo.Seek(partStart, 0)
+		binary.Write(archivo, binary.LittleEndian, &sb)
 		return
 	}
 
-	// Sin -p, verificamos si la carpeta ya existe
 	_, _, errExiste := utils.BuscarInodoPorRuta(archivo, sb, ruta)
 	if errExiste == nil {
 		fmt.Printf("[ERROR] El directorio '%s' ya existe.\n", ruta)
 		return
 	}
 
-	// Extraemos el padre directo y el nombre de la nueva carpeta
 	directorioPadre := filepath.Dir(ruta)
 	nombreNuevaCarpeta := filepath.Base(ruta)
 
@@ -168,9 +232,15 @@ func Mkdir(ruta string, p bool) {
 		inodoPadre = inodP
 	}
 
-	// Creamos solo la carpeta final
+	if !utils.TienePermiso(users.UsuarioActualUID, users.UsuarioActualGID, inodoPadre, 2) {
+		fmt.Printf("[ERROR] No tiene permiso de escritura sobre '%s'.\n", directorioPadre)
+		return
+	}
+
 	exito := crearDirectorioFisico(archivo, &sb, padreIndex, inodoPadre, nombreNuevaCarpeta, partStart)
 	if exito {
+		archivo.Seek(partStart, 0)
+		binary.Write(archivo, binary.LittleEndian, &sb)
 		fmt.Printf("[ÉXITO] Directorio '%s' creado.\n", ruta)
 	}
 }
@@ -187,20 +257,16 @@ func generarContenidoMkfile(size int) string {
 }
 
 func EnlazarInodoEnCarpeta(archivo *os.File, sb *types.SuperBloque, inodoPadre types.Inodo, indexPadre int32, nuevoInodo int32, nombreArchivo string) bool {
-	// Buscamos espacio en los bloques que la carpeta ya tiene asignados
 	for i := 0; i < 12; i++ {
 		if inodoPadre.I_block[i] != -1 {
 			var bc types.BloqueCarpeta
 			archivo.Seek(int64(sb.S_block_start)+int64(inodoPadre.I_block[i])*int64(sb.S_block_s), 0)
 			binary.Read(archivo, binary.LittleEndian, &bc)
 
-			// Buscamos una celda vacía
 			for j := 0; j < 4; j++ {
 				if bc.B_content[j].B_inodo == -1 {
 					bc.B_content[j].B_inodo = nuevoInodo
 					copy(bc.B_content[j].B_name[:], nombreArchivo)
-
-					// Reescribimos el bloque actualizado
 					archivo.Seek(int64(sb.S_block_start)+int64(inodoPadre.I_block[i])*int64(sb.S_block_s), 0)
 					binary.Write(archivo, binary.LittleEndian, &bc)
 					return true
@@ -209,45 +275,35 @@ func EnlazarInodoEnCarpeta(archivo *os.File, sb *types.SuperBloque, inodoPadre t
 		}
 	}
 
-	// Si todos estan llenos, creamos uno
 	for i := 0; i < 12; i++ {
 		if inodoPadre.I_block[i] == -1 {
+			nuevoBloqueIndex := utils.BuscarBloqueLibre(archivo, sb)
+			if nuevoBloqueIndex == -1 {
+				return false
+			}
 
-			// reservamos el nuevo bloque en bimap
-			nuevoBloqueIndex := sb.S_first_blo
-			sb.S_first_blo++
-			sb.S_free_blocks_count--
-			archivo.Seek(int64(sb.S_bm_block_start)+int64(nuevoBloqueIndex), 0)
-			binary.Write(archivo, binary.LittleEndian, byte('1'))
-
-			// configuramos el nuevo bloque en bimap
 			var bc types.BloqueCarpeta
 			for j := 0; j < 4; j++ {
 				bc.B_content[j].B_inodo = -1
 			}
-
 			bc.B_content[0].B_inodo = nuevoInodo
 			copy(bc.B_content[0].B_name[:], nombreArchivo)
 
-			// Escribimos el bloque al disco
 			archivo.Seek(int64(sb.S_block_start)+int64(nuevoBloqueIndex)*int64(sb.S_block_s), 0)
 			binary.Write(archivo, binary.LittleEndian, &bc)
 
-			// conectamos el bloque al inodo
-			inodoPadre.I_block[i] = int32(nuevoBloqueIndex)
+			inodoPadre.I_block[i] = nuevoBloqueIndex
 
-			// guardamos el inodo padre
 			archivo.Seek(int64(sb.S_inode_start)+int64(indexPadre)*int64(sb.S_inode_s), 0)
 			binary.Write(archivo, binary.LittleEndian, &inodoPadre)
 
 			return true
 		}
 	}
-
 	return false
 }
 
-func crearRutaRecursiva(archivo *os.File, sb *types.SuperBloque, ruta string, partStart int64) {
+func crearRutaRecursiva(archivo *os.File, sb *types.SuperBloque, ruta string, partStart int64) bool {
 	segmentos := strings.Split(strings.TrimPrefix(ruta, "/"), "/")
 	rutaActual := ""
 
@@ -264,10 +320,9 @@ func crearRutaRecursiva(archivo *os.File, sb *types.SuperBloque, ruta string, pa
 
 		_, _, err := utils.BuscarInodoPorRuta(archivo, *sb, rutaActual)
 		if err == nil {
-			continue
+			continue // este nivel ya existe, seguimos con el siguiente
 		}
 
-		// Buscamos al padre
 		var padreIndex int32
 		var inodoPadre types.Inodo
 		if padre == "/" {
@@ -280,26 +335,30 @@ func crearRutaRecursiva(archivo *os.File, sb *types.SuperBloque, ruta string, pa
 			inodoPadre = inP
 		}
 
-		// Creamos el nivel actual
-		exito := crearDirectorioFisico(archivo, sb, padreIndex, inodoPadre, segmento, partStart)
-		if !exito {
+		if !utils.TienePermiso(users.UsuarioActualUID, users.UsuarioActualGID, inodoPadre, 2) {
+			fmt.Printf("[ERROR] No tiene permiso de escritura sobre '%s'.\n", padre)
+			return false
+		}
+
+		if !crearDirectorioFisico(archivo, sb, padreIndex, inodoPadre, segmento, partStart) {
 			fmt.Printf("[ERROR] No se pudo crear '%s'.\n", rutaActual)
-			return
+			return false
 		}
 		fmt.Printf("[ÉXITO] Directorio '%s' creado.\n", rutaActual)
 	}
+	return true
 }
 
 func crearDirectorioFisico(archivo *os.File, sb *types.SuperBloque, padreIndex int32, inodoPadre types.Inodo, nombre string, partStart int64) bool {
-	// Reservar inodo
-	nuevoInodoIndex := sb.S_first_ino
-	sb.S_first_ino++
-	sb.S_free_inodes_count--
-	archivo.Seek(int64(sb.S_bm_inode_start)+int64(nuevoInodoIndex), 0)
-	binary.Write(archivo, binary.LittleEndian, byte('1'))
+	nuevoInodoIndex := utils.BuscarInodoLibre(archivo, sb)
+	if nuevoInodoIndex == -1 {
+		fmt.Println("[ERROR] No hay inodos libres. Disco lleno.")
+		return false
+	}
 
 	inodoCarpeta := types.Inodo{
-		I_uid: 1, I_gid: 1, I_size: 0, I_type: '0',
+		I_uid: users.UsuarioActualUID, I_gid: users.UsuarioActualGID,
+		I_size: 0, I_type: '0',
 		I_perm: [3]byte{'6', '6', '4'},
 	}
 	for j := 0; j < 15; j++ {
@@ -310,12 +369,11 @@ func crearDirectorioFisico(archivo *os.File, sb *types.SuperBloque, padreIndex i
 	copy(inodoCarpeta.I_atime[:], tiempo)
 	copy(inodoCarpeta.I_mtime[:], tiempo)
 
-	// Reservar bloque
-	nuevoBloqueIndex := sb.S_first_blo
-	sb.S_first_blo++
-	sb.S_free_blocks_count--
-	archivo.Seek(int64(sb.S_bm_block_start)+int64(nuevoBloqueIndex), 0)
-	binary.Write(archivo, binary.LittleEndian, byte('1'))
+	nuevoBloqueIndex := utils.BuscarBloqueLibre(archivo, sb)
+	if nuevoBloqueIndex == -1 {
+		fmt.Println("[ERROR] No hay bloques libres. Disco lleno.")
+		return false
+	}
 
 	inodoCarpeta.I_block[0] = nuevoBloqueIndex
 	var bc types.BloqueCarpeta
@@ -323,25 +381,22 @@ func crearDirectorioFisico(archivo *os.File, sb *types.SuperBloque, padreIndex i
 		bc.B_content[j].B_inodo = -1
 	}
 	copy(bc.B_content[0].B_name[:], ".")
-	bc.B_content[0].B_inodo = int32(nuevoInodoIndex)
+	bc.B_content[0].B_inodo = nuevoInodoIndex
 	copy(bc.B_content[1].B_name[:], "..")
 	bc.B_content[1].B_inodo = padreIndex
 
-	// Guardar bloque e inodo
 	archivo.Seek(int64(sb.S_block_start)+int64(nuevoBloqueIndex)*int64(sb.S_block_s), 0)
 	binary.Write(archivo, binary.LittleEndian, &bc)
 
 	archivo.Seek(int64(sb.S_inode_start)+int64(nuevoInodoIndex)*int64(sb.S_inode_s), 0)
 	binary.Write(archivo, binary.LittleEndian, &inodoCarpeta)
 
-	// Enlazar al inodo padre
-	exito := EnlazarInodoEnCarpeta(archivo, sb, inodoPadre, padreIndex, int32(nuevoInodoIndex), nombre)
+	exito := EnlazarInodoEnCarpeta(archivo, sb, inodoPadre, padreIndex, nuevoInodoIndex, nombre)
 	if !exito {
 		fmt.Println("[ERROR] Carpeta padre llena. Falta implementar indirectos.")
 		return false
 	}
 
-	// Consolidar el Superbloque
 	archivo.Seek(partStart, 0)
 	binary.Write(archivo, binary.LittleEndian, sb)
 	return true
@@ -1009,18 +1064,25 @@ func Fdisk(path string, name string, deleteVal string, addVal string, unit strin
 		return
 	}
 
-	// 2. Lógica de DELETE
+	// 2. Lógica de DELETE dentro de tu función Fdisk
 	if deleteVal != "" {
-		if deleteVal == "fast" {
+		switch strings.ToLower(deleteVal) {
+		case "fast":
 			mbr.Mbr_partitions[idx].Part_status = '0'
-		} else if deleteVal == "full" {
+		case "full":
 			mbr.Mbr_partitions[idx].Part_status = '0'
-			// Rellenar con '\0' según requerimientoEnunciado_Proyecto2.pdf - Page 10]
 			archivo.Seek(mbr.Mbr_partitions[idx].Part_start, 0)
 			ceros := make([]byte, mbr.Mbr_partitions[idx].Part_s)
 			archivo.Write(ceros)
+		default:
+			fmt.Println("[ERROR] Tipo de borrado no válido, use 'fast' o 'full'.")
+			return
 		}
+
 		utils.EscribirEnDisco(archivo, mbr)
+		archivo.Sync()
+		archivo.Close()
+
 		fmt.Println("[ÉXITO] Partición eliminada.")
 		return
 	}
@@ -1079,4 +1141,12 @@ func TieneEspacioSuficiente(archivo *os.File, mbr types.MBR, requestedBytes int6
 	}
 
 	return true
+}
+
+func confirmarSobreescritura(ruta string) bool {
+	fmt.Printf("[AVISO] El archivo '%s' ya existe. ¿Desea sobrescribirlo? (s/n): ", ruta)
+	reader := bufio.NewReader(os.Stdin)
+	respuesta, _ := reader.ReadString('\n')
+	respuesta = strings.ToLower(strings.TrimSpace(respuesta))
+	return respuesta == "s" || respuesta == "si" || respuesta == "y" || respuesta == "yes"
 }

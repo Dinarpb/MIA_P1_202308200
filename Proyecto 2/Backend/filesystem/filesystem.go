@@ -65,7 +65,7 @@ func Cat(rutaArchivo string) {
 		return
 	}
 
-	if inodoArchivo.I_type != '1' {
+	if inodoArchivo.I_type != '1' && inodoArchivo.I_type != 1 {
 		fmt.Printf("[ERROR] La ruta '%s' no es un archivo de texto.\n", rutaArchivo)
 		return
 	}

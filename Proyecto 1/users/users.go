@@ -22,7 +22,7 @@ func Login(user string, pass string, id string) {
 	archivo, sb, _, inodoUsers, _, err := utils.ObtenerContextoParticion()
 	if err != nil {
 		fmt.Println("[ERROR] No se pudo acceder a la partición o a txt para validar el login.")
-		utils.IdParticionActual = "" 
+		utils.IdParticionActual = ""
 		return
 	}
 	defer archivo.Close()
@@ -66,7 +66,6 @@ func Logout() {
 	UsuarioActual = ""
 	utils.IdParticionActual = ""
 }
-
 
 func Mkgrp(name string) {
 	if !SesionActiva || UsuarioActual != "root" {
@@ -113,13 +112,12 @@ func Mkgrp(name string) {
 
 func Rmgrp(name string) {
 	if !SesionActiva || UsuarioActual != "root" {
-		fmt.Println("[ERROR] Permisos insuficientes o sesión no activa.")
+		fmt.Println("[ERROR] Permisos insuficientes.")
 		return
 	}
 
 	archivo, sb, inodoIndex, inodoUsers, _, err := utils.ObtenerContextoParticion()
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
 	defer archivo.Close()
@@ -130,17 +128,25 @@ func Rmgrp(name string) {
 	encontrado := false
 
 	for _, linea := range lineas {
-		if linea == "" {
+		if strings.TrimSpace(linea) == "" {
 			continue
 		}
 		datos := strings.Split(linea, ",")
 
-		if len(datos) >= 3 && datos[1] == "G" && datos[2] == name {
+		// Si es el grupo que queremos borrar, lo saltamos
+		if strings.TrimSpace(datos[1]) == "G" && strings.TrimSpace(datos[2]) == name {
 			encontrado = true
-			continue 
+			continue
 		}
 
-		nuevoContenido += linea + "\n"
+		// SI ES UN USUARIO Y PERTENECE AL GRUPO A BORRAR, CAMBIARLO A ROOT
+		if strings.TrimSpace(datos[1]) == "U" && strings.TrimSpace(datos[2]) == name {
+			// Cambiamos el grupo a 'root' para evitar que se quede sin grupo
+			datos[2] = "root"
+			nuevoContenido += strings.Join(datos, ",") + "\n"
+		} else {
+			nuevoContenido += linea + "\n"
+		}
 	}
 
 	if !encontrado {
@@ -149,7 +155,7 @@ func Rmgrp(name string) {
 	}
 
 	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, nuevoContenido)
-	fmt.Printf("[ÉXITO] Grupo '%s' eliminado físicamente del sistema.\n", name)
+	fmt.Printf("[ÉXITO] Grupo '%s' eliminado. Los usuarios fueron movidos a 'root'.\n", name)
 }
 
 func Mkusr(user string, pass string, grp string) {
@@ -170,7 +176,7 @@ func Mkusr(user string, pass string, grp string) {
 
 	correlativoMaximo := 0
 	grupoExiste := false
-	nuevoContenido := "" 
+	nuevoContenido := ""
 
 	for _, linea := range lineas {
 		if strings.TrimSpace(linea) == "" {
@@ -245,7 +251,7 @@ func Rmusr(user string) {
 
 			if tipo == "U" && nombreUsuarioExtraido == user {
 				encontrado = true
-				continue 
+				continue
 			}
 		}
 

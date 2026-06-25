@@ -2,118 +2,775 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Archivos EXT2 - Dina</title>
+    <title>Panel de Administración - EXT2 / MIA</title>
     <style>
         :root {
-            --bg-color: #1e1e2e;
+            --bg-dark: #1e1e2e;
             --panel-bg: #282a36;
-            --text-color: #f8f8f2;
+            --text-main: #f8f8f2;
             --accent: #bd93f9;
+            --accent-hover: #ff79c6;
+            --border: #44475a;
             --success: #50fa7b;
-            --error: #ff5555;
+            --danger: #ff5555;
+            --warning: #f1fa8c;
+            --cyan: #8be9fd;
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
+            background-color: var(--bg-dark);
+            color: var(--text-main);
             margin: 0;
-            padding: 20px;
             display: flex;
-            gap: 20px;
-            height: 90vh;
+            height: 100vh;
+            overflow: hidden;
         }
-        .panel {
-            background-color: var(--panel-bg);
+        /* Layout Principal */
+        .sidebar {
+            width: 260px;
+            background-color: #191a21;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            flex: 1;
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
+            gap: 15px;
         }
-        h2 { margin-top: 0; color: var(--accent); border-bottom: 1px solid #444; padding-bottom: 10px; }
-        
-        textarea {
-            width: 100%;
+        .main-content {
             flex-grow: 1;
-            background-color: #191a21;
-            color: #f8f8f2;
-            border: 1px solid #444;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 14px;
-            resize: none;
-            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-dark);
+            padding: 20px;
+            overflow-y: auto;
         }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background-color: var(--panel-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+        /* Botones y UI */
         button {
             background-color: var(--accent);
             color: #282a36;
             border: none;
             padding: 10px 15px;
             font-weight: bold;
+            border-radius: 4px;
             cursor: pointer;
-            border-radius: 5px;
             transition: 0.3s;
         }
-        button:hover { background-color: #ff79c6; }
+        button:hover { background-color: var(--accent-hover); }
+        button.danger { background-color: var(--danger); color: white; }
+        button.success { background-color: var(--success); color: #282a36; }
         
-        #consolaSalida {
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 20px;
+        }
+        .grid-item {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            padding: 20px 10px;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .grid-item:hover { transform: translateY(-5px); border-color: var(--accent); }
+        .grid-item.active { border-color: var(--success); box-shadow: 0 0 10px rgba(80, 250, 123, 0.3); }
+        .icon { font-size: 50px; margin-bottom: 10px; }
+        .item-name { font-size: 14px; font-weight: bold; word-break: break-all; }
+        .item-sub { font-size: 12px; color: #888; margin-top: 5px; word-break: break-all; }
+
+        /* Consola */
+        .console-output {
             background-color: #000;
             color: var(--success);
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 10px;
+            padding: 15px;
             font-family: monospace;
-            border: 1px solid #444;
-            border-radius: 5px;
+            border-radius: 8px;
+            min-height: 120px;
+            max-height: 200px;
+            overflow-y: auto;
             white-space: pre-wrap;
+            margin-top: 20px;
+            border: 1px solid var(--border);
         }
+
+        /* Modales */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal {
+            background-color: var(--panel-bg);
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal h3 { margin-top: 0; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 13px; margin-bottom: 5px; color: #ccc; }
+        .input-group input[type="text"], .input-group input[type="number"], .input-group select {
+            width: 100%; padding: 8px; background-color: #191a21; color: white;
+            border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-    <div class="panel">
-        <h2>💻 Terminal de Entrada</h2>
-        <textarea id="txtEntrada" placeholder="Escribe tus comandos aquí...&#10;Ejemplo:&#10;mkdisk -size=5 -path=/home/disco.dsk&#10;mount -path=/home/disco.dsk -name=Part1"></textarea>
-        <button onclick="ejecutarComandos()">Ejecutar Comandos</button>
+    <div class="sidebar">
+        <h3 style="color: var(--accent); text-align: center; margin-top: 0;">MIA File System</h3>
+        <button onclick="changeView('disks')">💾 Ver Discos</button>
+        <button onclick="changeView('explorer-fisico')" style="background-color: var(--warning); color: #000;">📂 Explorador de Archivos</button>
+        <button onclick="changeView('explorer-ext2')" style="background-color: var(--success); color: #000;">📁 Explorador EXT2</button>
+        
+        <button onclick="window.location.href='login.html'" style="background-color: var(--cyan); color: #000; margin-top: 15px;">👤 Login a Partición</button>
+        <button onclick="ejecutar('logout')" class="danger">🚪 Logout</button>
+        
+        <hr style="border-color: var(--border); width: 100%;">
+        
+        <h4 style="color: #ccc; margin-bottom: 5px;">Reportes</h4>
+        <button onclick="openModal('repModal')" class="success">📊 Generar Reporte</button>
     </div>
 
-    <div class="panel">
-        <h2>🖥️ Salida del Servidor</h2>
-        <div id="consolaSalida">Esperando comandos...</div>
+    <div class="main-content">
+        
+        <div id="view-disks">
+            <div class="header-actions">
+                <button onclick="openModal('mkdiskModal')">➕ Crear Disco</button>
+                <button onclick="openModal('rmdiskModal')" class="danger">🗑️ Eliminar Disco</button>
+                <div style="width: 2px; background: var(--border); margin: 0 10px;"></div>
+                <button id="btnPartition" onclick="openModal('fdiskModal')" style="display:none;">🗄️ Gestionar Particiones</button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 id="sectionTitle">Discos Disponibles</h2>
+            </div>
+            <div class="grid-container" id="diskGrid"></div>
+        </div>
+
+        <div id="view-explorer-fisico" style="display: none;">
+            <div class="header-actions">
+                <span style="color: #ccc;">Navegando en entorno real. Útil para ver rutas de archivos origen.</span>
+            </div>
+            <h2 style="color: var(--warning); background: #191a21; padding: 10px; border-radius: 5px;" id="rutaFisicaActual">/home/dinaarpb</h2>
+            <div class="grid-container" id="gridFisico"></div>
+        </div>
+
+        <div id="view-explorer-ext2" style="display: none;">
+            <div class="header-actions">
+                <button onclick="openModal('fileOpsModal')" style="background-color: var(--cyan);">⚙️ Operaciones (Mover/Copiar)</button>
+                <button onclick="openModal('mkfileModal')">📄 Crear Archivo</button>
+                <button onclick="openModal('mkdirModal')">📁 Crear Carpeta</button>
+                <button onclick="openModal('adminUsersModal')" style="background-color: var(--warning); color: #000;">👤 Gestión Usuarios</button>
+                <button onclick="openModal('adminGroupsModal')" style="background-color: var(--accent); color: #000;">👥 Gestión Grupos</button>
+            </div>
+            <h2 style="color: var(--success); background: #191a21; padding: 10px; border-radius: 5px;" id="rutaExt2Actual">/</h2>
+            <div class="grid-container" id="gridExt2"></div>
+        </div>
+
+        <div style="margin-top: auto;">
+            <h4 style="margin-bottom: 5px;">🖥️ Terminal de Comandos</h4>
+            <div id="consola" class="console-output">Esperando acciones...</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="mkdiskModal">
+        <div class="modal">
+            <h3>Crear Disco (MKDISK)</h3>
+            <form onsubmit="handleForm(event, 'mkdisk')">
+                <div class="input-group"><label>Tamaño</label><input type="number" id="mkSize" required min="1"></div>
+                <div class="input-group"><label>Unidad</label><select id="mkUnit"><option value="M">Megabytes (M)</option><option value="K">Kilobytes (K)</option></select></div>
+                <div class="input-group"><label>Ruta (Path)</label><input type="text" id="mkPath" placeholder="/home/dinaarpb/mia/disco1.dsk" required></div>
+                <div class="input-group"><label>Ajuste (Fit)</label><select id="mkFit"><option value="FF">First Fit (FF)</option><option value="BF">Best Fit (BF)</option><option value="WF">Worst Fit (WF)</option></select></div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('mkdiskModal')" class="danger">Cancelar</button>
+                    <button type="submit">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="rmdiskModal">
+        <div class="modal">
+            <h3>Eliminar Disco (RMDISK)</h3>
+            <form onsubmit="handleForm(event, 'rmdisk')">
+                <div class="input-group"><label>Ruta del disco</label><input type="text" id="rmPath" required></div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('rmdiskModal')">Cancelar</button>
+                    <button type="submit" class="danger">Eliminar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="fdiskModal">
+        <div class="modal">
+            <h3>Gestión de Particiones (FDISK)</h3>
+            <form onsubmit="handleForm(event, 'fdisk')">
+                <div class="input-group"><label>Ruta del Disco</label><input type="text" id="fdPath" required></div>
+                <div class="input-group"><label>Nombre de Partición</label><input type="text" id="fdName" required></div>
+                <div class="input-group">
+                    <label>Operación</label>
+                    <select id="fdOp" onchange="toggleFdiskFields()">
+                        <option value="create">Crear Partición</option>
+                        <option value="delete">Eliminar Partición (-delete)</option>
+                        <option value="add">Modificar Espacio (-add)</option>
+                    </select>
+                </div>
+                
+                <div id="fdiskCreateFields">
+                    <div class="input-group"><label>Tamaño</label><input type="number" id="fdSize" min="1"></div>
+                    <div class="input-group"><label>Unidad</label><select id="fdUnit"><option value="K">Kilobytes (K)</option><option value="M">Megabytes (M)</option><option value="B">Bytes (B)</option></select></div>
+                    <div class="input-group"><label>Tipo</label><select id="fdType"><option value="P">Primaria</option><option value="E">Extendida</option><option value="L">Lógica</option></select></div>
+                    <div class="input-group"><label>Ajuste</label><select id="fdFit"><option value="WF">Worst Fit</option><option value="FF">First Fit</option><option value="BF">Best Fit</option></select></div>
+                </div>
+
+                <div id="fdiskDeleteFields" style="display:none;">
+                    <div class="input-group">
+                        <label>Tipo de Borrado</label>
+                        <select id="fdDelete">
+                            <option value="Fast">Fast</option>
+                            <option value="Full">Full</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="fdiskAddFields" style="display:none;">
+                    <div class="input-group"><label>Espacio a agregar/quitar (+/-)</label><input type="number" id="fdAdd"></div>
+                    <div class="input-group"><label>Unidad</label><select id="fdAddUnit"><option value="K">Kilobytes</option><option value="M">Megabytes</option><option value="B">Bytes</option></select></div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('fdiskModal')" class="danger">Cancelar</button>
+                    <button type="submit">Ejecutar FDISK</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="partActionsModal">
+        <div class="modal">
+            <h3 id="partTitle">Acciones de Partición</h3>
+            <div class="input-group"><label>Ruta (Path)</label><input type="text" id="actPath" readonly></div>
+            <div class="input-group"><label>Nombre</label><input type="text" id="actName" readonly></div>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+                <button id="btnActionMount" onclick="actionMount()" style="background-color: var(--cyan); color: black;">🔌 Montar (MOUNT)</button>
+                
+                <div id="divMountedActions" style="display:none; flex-direction: column; gap: 10px;">
+                    <div class="input-group" style="margin-bottom: 0;">
+                        <label>ID Montado</label>
+                        <input type="text" id="actId" readonly style="color: var(--success); font-weight: bold;">
+                    </div>
+                    <button onclick="actionUnmount()" class="warning" style="color: black;">📤 Desmontar (UNMOUNT)</button>
+                    
+                    <div style="display:flex; gap: 10px; align-items: center; margin-top: 10px;">
+                        <select id="actFsType" style="flex:1; padding: 8px;"><option value="Full">Full</option></select>
+                        <button onclick="actionMkfs()" class="danger">🧹 Formatear (MKFS)</button>
+                    </div>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('partActionsModal')" style="margin-top: 15px; width: 100%; background: var(--border);">Cerrar</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="mkfileModal">
+        <div class="modal">
+            <h3>Nuevo Archivo (MKFILE)</h3>
+            <form onsubmit="handleForm(event, 'mkfile')">
+                <div class="input-group"><label>Ruta destino (-path)</label><input type="text" id="fileMkPath" placeholder="/user/docs/a.txt" required></div>
+                <div class="input-group"><label>Tamaño en bytes (-size)</label><input type="number" id="fileMkSize" min="0"></div>
+                <div class="input-group"><label>Ruta en PC origen (-cont)</label><input type="text" id="fileMkCont" placeholder="/home/dinaarpb/contenido.txt"></div>
+                <div class="input-group" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="fileMkR" style="width: auto;">
+                    <label style="margin:0;">Crear carpetas padres (-r)</label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('mkfileModal')" class="danger">Cancelar</button>
+                    <button type="submit">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="mkdirModal">
+        <div class="modal">
+            <h3>Nueva Carpeta (MKDIR)</h3>
+            <form onsubmit="handleForm(event, 'mkdir')">
+                <div class="input-group"><label>Ruta de la carpeta (-path)</label><input type="text" id="dirMkPath" placeholder="/user/docs/usac" required></div>
+                <div class="input-group" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="dirMkP" style="width: auto;">
+                    <label style="margin:0;">Crear carpetas padres (-p)</label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('mkdirModal')" class="danger">Cancelar</button>
+                    <button type="submit">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="fileOpsModal">
+        <div class="modal">
+            <h3>Operaciones de Archivos/Carpetas</h3>
+            <form onsubmit="handleForm(event, 'fileops')">
+                <div class="input-group">
+                    <label>Comando</label>
+                    <select id="opType" onchange="toggleOpFields()">
+                        <option value="copy">Copiar (COPY)</option>
+                        <option value="move">Mover (MOVE)</option>
+                        <option value="rename">Renombrar (RENAME)</option>
+                        <option value="edit">Editar (EDIT)</option>
+                        <option value="remove">Eliminar (REMOVE)</option>
+                    </select>
+                </div>
+                
+                <div class="input-group"><label>Ruta Origen (-path)</label><input type="text" id="opPath" required></div>
+                
+                <div id="opDestFields">
+                    <div class="input-group"><label>Ruta Destino (-destino)</label><input type="text" id="opDest"></div>
+                </div>
+                
+                <div id="opNameFields" style="display:none;">
+                    <div class="input-group"><label>Nuevo Nombre (-name)</label><input type="text" id="opName"></div>
+                </div>
+
+                <div id="opContFields" style="display:none;">
+                    <div class="input-group"><label>Archivo Físico Nuevo Contenido (-contenido)</label><input type="text" id="opCont"></div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('fileOpsModal')" class="danger">Cancelar</button>
+                    <button type="submit">Ejecutar Comando</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="adminUsersModal">
+        <div class="modal">
+            <h3>Administración de Usuarios</h3>
+            <div class="input-group">
+                <label>Acción</label>
+                <select id="usrOp">
+                    <option value="mkusr">Crear Usuario (MKUSR)</option>
+                    <option value="rmusr">Eliminar Usuario (RMUSR)</option>
+                    <option value="chgrp">Cambiar Grupo (CHGRP)</option>
+                </select>
+            </div>
+            <div class="input-group"><label>Nombre Usuario</label><input type="text" id="usrName"></div>
+            <div class="input-group"><label>Password</label><input type="text" id="usrPass"></div>
+            <div class="input-group"><label>Grupo</label><input type="text" id="usrGrp"></div>
+            <div class="modal-actions">
+                <button onclick="closeModal('adminUsersModal')">Cerrar</button>
+                <button onclick="ejecutarAdmin('user')" class="success">Ejecutar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="adminGroupsModal">
+        <div class="modal">
+            <h3>Administración de Grupos</h3>
+            <div class="input-group">
+                <label>Acción</label>
+                <select id="grpOp">
+                    <option value="mkgrp">Crear Grupo (MKGRP)</option>
+                    <option value="rmgrp">Eliminar Grupo (RMGRP)</option>
+                </select>
+            </div>
+            <div class="input-group"><label>Nombre Grupo</label><input type="text" id="grpName"></div>
+            <div class="modal-actions">
+                <button onclick="closeModal('adminGroupsModal')">Cerrar</button>
+                <button onclick="ejecutarAdmin('group')" class="success">Ejecutar</button>
+            </div>
+        </div>
     </div>
 
     <script>
-        async function ejecutarComandos() {
-            const entrada = document.getElementById('txtEntrada').value;
-            const salida = document.getElementById('consolaSalida');
+        let sistemaActual = []; 
+        
+        // --- UTILIDADES DE UI ---
+        function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+        
+        // MANEJO DE VISTAS (Aquí cambiamos entre Discos, Físico y EXT2)
+        function changeView(view) {
+            document.getElementById('view-disks').style.display = view === 'disks' ? 'block' : 'none';
+            document.getElementById('view-explorer-fisico').style.display = view === 'explorer-fisico' ? 'block' : 'none';
+            document.getElementById('view-explorer-ext2').style.display = view === 'explorer-ext2' ? 'block' : 'none';
             
-            if (!entrada.trim()) {
-                salida.innerHTML += "<br><span style='color:var(--error)'>[ERROR] No hay comandos para ejecutar.</span>";
-                return;
-            }
+            if (view === 'disks') refreshUI();
+            if (view === 'explorer-fisico') cargarCarpetaFisica('/home/dinaarpb');
+            if (view === 'explorer-ext2') cargarCarpetaExt2('/');
+        }
 
-            salida.innerHTML += `<br><span style='color:white'>> Ejecutando...</span>`;
+        function toggleFdiskFields() {
+            const op = document.getElementById('fdOp').value;
+            document.getElementById('fdiskCreateFields').style.display = op === 'create' ? 'block' : 'none';
+            document.getElementById('fdiskDeleteFields').style.display = op === 'delete' ? 'block' : 'none';
+            document.getElementById('fdiskAddFields').style.display = op === 'add' ? 'block' : 'none';
+        }
+        function toggleOpFields() {
+            const op = document.getElementById('opType').value;
+            document.getElementById('opDestFields').style.display = (op === 'copy' || op === 'move') ? 'block' : 'none';
+            document.getElementById('opNameFields').style.display = op === 'rename' ? 'block' : 'none';
+            document.getElementById('opContFields').style.display = op === 'edit' ? 'block' : 'none';
+        }
 
+        // --- CONEXIÓN API COMANDOS ---
+        async function ejecutar(comandoStr) {
+            const consola = document.getElementById('consola');
+            consola.innerHTML += `\n> ${comandoStr}`;
+            
             try {
-                // Hacemos la petición POST al backend en Go
                 const response = await fetch('http://localhost:3000/ejecutar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ comando: entrada })
+                    body: JSON.stringify({ comando: comandoStr })
                 });
-
                 const data = await response.json();
+                consola.innerHTML += `\n${data.output || "Ejecutado correctamente."}\n`;
                 
-                // Mostramos la respuesta del servidor en la consola visual
-                salida.innerHTML += `<br>${data.output || JSON.stringify(data)}`;
-                salida.scrollTop = salida.scrollHeight; // Auto-scroll hacia abajo
-
+                // Refrescamos vistas si aplica
+                if(document.getElementById('view-disks').style.display !== 'none') {
+                    refreshUI(); 
+                } 
+                if (document.getElementById('view-explorer-ext2').style.display !== 'none') {
+                    cargarCarpetaExt2(document.getElementById('rutaExt2Actual').innerText);
+                }
             } catch (error) {
-                salida.innerHTML += `<br><span style='color:var(--error)'>[ERROR CONEXIÓN] ¿Está corriendo tu servidor Go en el puerto 3000?</span>`;
+                consola.innerHTML += `\n[ERROR] No se pudo conectar a la API.\n`;
+            }
+            consola.scrollTop = consola.scrollHeight;
+        }
+
+        // --- MANEJO DE FORMULARIOS ---
+        function handleForm(e, command) {
+            e.preventDefault();
+            let cmdStr = "";
+            
+            if (command === 'mkdisk') {
+                cmdStr = `mkdisk -size=${document.getElementById('mkSize').value} -unit=${document.getElementById('mkUnit').value} -fit=${document.getElementById('mkFit').value} -path="${document.getElementById('mkPath').value}"`;
+                closeModal('mkdiskModal');
+            } else if (command === 'rmdisk') {
+                if(confirm("¿Seguro que deseas eliminar el disco físicamente?")) {
+                    cmdStr = `rmdisk -path="${document.getElementById('rmPath').value}"`;
+                }
+                closeModal('rmdiskModal');
+            } else if (command === 'fdisk') {
+                const path = document.getElementById('fdPath').value;
+                const name = document.getElementById('fdName').value;
+                const op = document.getElementById('fdOp').value;
+                if (op === 'create') cmdStr = `fdisk -size=${document.getElementById('fdSize').value} -unit=${document.getElementById('fdUnit').value} -path="${path}" -type=${document.getElementById('fdType').value} -fit=${document.getElementById('fdFit').value} -name="${name}"`;
+                else if (op === 'delete') cmdStr = `fdisk -delete=${document.getElementById('fdDelete').value} -name="${name}" -path="${path}"`;
+                else if (op === 'add') cmdStr = `fdisk -add=${document.getElementById('fdAdd').value} -unit=${document.getElementById('fdAddUnit').value} -name="${name}" -path="${path}"`;
+                closeModal('fdiskModal');
+            } else if (command === 'mkfile') {
+                const path = document.getElementById('fileMkPath').value;
+                const size = document.getElementById('fileMkSize').value;
+                const cont = document.getElementById('fileMkCont').value;
+                const r = document.getElementById('fileMkR').checked;
+                cmdStr = `mkfile -path="${path}"`;
+                if (size) cmdStr += ` -size=${size}`;
+                if (cont) cmdStr += ` -cont="${cont}"`;
+                if (r) cmdStr += ` -r`;
+                closeModal('mkfileModal');
+            } else if (command === 'mkdir') {
+                const path = document.getElementById('dirMkPath').value;
+                const p = document.getElementById('dirMkP').checked;
+                cmdStr = `mkdir -path="${path}"`;
+                if (p) cmdStr += ` -p`;
+                closeModal('mkdirModal');
+            } else if (command === 'fileops') {
+                const op = document.getElementById('opType').value;
+                const path = document.getElementById('opPath').value;
+                if (op === 'copy') cmdStr = `copy -path="${path}" -destino="${document.getElementById('opDest').value}"`;
+                else if (op === 'move') cmdStr = `move -path="${path}" -destino="${document.getElementById('opDest').value}"`;
+                else if (op === 'rename') cmdStr = `rename -path="${path}" -name="${document.getElementById('opName').value}"`;
+                else if (op === 'edit') cmdStr = `edit -path="${path}" -contenido="${document.getElementById('opCont').value}"`;
+                else if (op === 'remove') cmdStr = `remove -path="${path}"`;
+                closeModal('fileOpsModal');
+            }
+            if(cmdStr) ejecutar(cmdStr);
+        }
+
+        async function ejecutarAdmin(tipo) {
+            let cmd = "";
+            if (tipo === 'user') {
+                const op = document.getElementById('usrOp').value;
+                const u = document.getElementById('usrName').value;
+                const p = document.getElementById('usrPass').value;
+                const g = document.getElementById('usrGrp').value;
+                if (op === 'mkusr') cmd = `mkusr -user="${u}" -pass="${p}" -grp="${g}"`;
+                else if (op === 'rmusr') cmd = `rmusr -user="${u}"`;
+                else if (op === 'chgrp') cmd = `chgrp -user="${u}" -grp="${g}"`;
+                closeModal('adminUsersModal');
+            } else {
+                const op = document.getElementById('grpOp').value;
+                const g = document.getElementById('grpName').value;
+                if (op === 'mkgrp') cmd = `mkgrp -name="${g}"`;
+                else if (op === 'rmgrp') cmd = `rmgrp -name="${g}"`;
+                closeModal('adminGroupsModal');
+            }
+            if (cmd) {
+                await ejecutar(cmd);
+                cargarCarpetaExt2(document.getElementById('rutaExt2Actual').innerText);
             }
         }
+
+        // --- RENDERIZADO DISCOS ---
+        async function refreshUI() {
+            const diskGrid = document.getElementById('diskGrid');
+            diskGrid.innerHTML = "<p style='padding: 20px;'>Leyendo discos en el servidor...</p>";
+            document.getElementById('sectionTitle').innerHTML = `Discos Disponibles`;
+            document.getElementById('btnPartition').style.display = 'none';
+
+            try {
+                // Fetch de la vista de discos
+                const res = await fetch(`http://localhost:3000/sistema?t=${Date.now()}`);
+                sistemaActual = await res.json();
+                diskGrid.innerHTML = "";
+                
+                if (!sistemaActual || sistemaActual.length === 0) {
+                    diskGrid.innerHTML = "<p style='padding: 20px; color: var(--warning);'>No se encontraron discos (.dsk / .mia).</p>";
+                    return;
+                }
+                sistemaActual.forEach((disco, index) => {
+                    const nombreDisco = disco.path.split('/').pop();
+                    diskGrid.innerHTML += `
+                        <div class="grid-item" onclick="selectDisk(${index}, this)">
+                            <div class="icon">🖴</div>
+                            <div class="item-name">${nombreDisco}</div>
+                            <div class="item-sub" style="font-size: 10px;">${disco.path}</div>
+                        </div>
+                    `;
+                });
+            } catch(e) {
+                diskGrid.innerHTML = "<p style='padding: 20px; color: var(--danger);'>Error al conectar con el backend.</p>";
+            }
+        }
+
+        function selectDisk(index, element) {
+            const disco = sistemaActual[index];
+            document.getElementById('fdPath').value = disco.path;
+            document.getElementById('btnPartition').style.display = 'block';
+            
+            const nombreDisco = disco.path.split('/').pop();
+            document.getElementById('sectionTitle').innerHTML = `Particiones en ${nombreDisco} <button onclick="refreshUI()" style="margin-left: 15px; font-size: 12px; padding: 5px 10px; background: var(--border);">⬅ Volver a Discos</button>`;
+            
+            const diskGrid = document.getElementById('diskGrid');
+            diskGrid.innerHTML = "";
+            
+            if (!disco.particiones || disco.particiones.length === 0) {
+                diskGrid.innerHTML = "<p style='padding: 20px;'>Este disco no tiene particiones o el MBR está vacío.</p>";
+                return;
+            }
+
+            disco.particiones.forEach(part => {
+                const colorIcono = part.montada ? 'var(--success)' : 'var(--cyan)';
+                const txtEstado = part.montada ? `<span style="color:var(--success)">● Montada (${part.id})</span>` : `<span style="color:#888">○ Desmontada</span>`;
+                
+                diskGrid.innerHTML += `
+                    <div class="grid-item" onclick="openPartActions('${disco.path}', '${part.nombre}', ${part.montada}, '${part.id}')">
+                        <div class="icon" style="color: ${colorIcono};">💿</div>
+                        <div class="item-name">${part.nombre}</div>
+                        <div class="item-sub">${txtEstado}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // --- ACCIONES DE PARTICIÓN ---
+        function openPartActions(path, name, isMounted, mountId) {
+            document.getElementById('actPath').value = path;
+            document.getElementById('actName').value = name;
+            document.getElementById('partTitle').innerText = `Acciones: ${name}`;
+            if (isMounted) {
+                document.getElementById('btnActionMount').style.display = 'none';
+                document.getElementById('divMountedActions').style.display = 'flex';
+                document.getElementById('actId').value = mountId;
+            } else {
+                document.getElementById('btnActionMount').style.display = 'block';
+                document.getElementById('divMountedActions').style.display = 'none';
+                document.getElementById('actId').value = '';
+            }
+            openModal('partActionsModal');
+        }
+
+        function actionMount() {
+            ejecutar(`mount -path="${document.getElementById('actPath').value}" -name="${document.getElementById('actName').value}"`);
+            closeModal('partActionsModal');
+        }
+
+        function actionUnmount() {
+            ejecutar(`unmount -id=${document.getElementById('actId').value}`);
+            closeModal('partActionsModal');
+        }
+
+        function actionMkfs() {
+            if(confirm("Se borrarán los datos para aplicar el formato EXT2. ¿Continuar?")) {
+                ejecutar(`mkfs -type=${document.getElementById('actFsType').value} -id=${document.getElementById('actId').value}`);
+                closeModal('partActionsModal');
+            }
+        }
+
+
+        // ================= EXPLORADOR FÍSICO (WSL) =================
+        async function cargarCarpetaFisica(ruta) {
+            document.getElementById('rutaFisicaActual').innerText = ruta;
+            const grid = document.getElementById('gridFisico');
+            grid.innerHTML = "<p style='padding: 20px;'>Leyendo WSL...</p>";
+
+            try {
+                // Llama al endpoint de Go configurado para leer directorios físicos reales
+                const response = await fetch(`http://localhost:3000/explorar-fisico?ruta=${encodeURIComponent(ruta)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    grid.innerHTML = `<p style='color: var(--danger); padding: 20px;'>${data.error}</p>`;
+                    return;
+                }
+
+                grid.innerHTML = ""; 
+
+                if (ruta !== '/' && ruta !== '/home') {
+                    const rutaPadre = ruta.substring(0, ruta.lastIndexOf('/')) || '/';
+                    grid.innerHTML += `
+                        <div class="grid-item" onclick="cargarCarpetaFisica('${rutaPadre}')">
+                            <div class="icon" style="color: var(--warning);">📁</div>
+                            <div class="item-name">.. (Subir nivel)</div>
+                        </div>`;
+                }
+
+                if (!data.archivos || data.archivos.length === 0) {
+                    grid.innerHTML += "<p style='padding: 20px;'>Carpeta vacía.</p>";
+                    return;
+                }
+
+                data.archivos.forEach(archivo => {
+                    const icono = archivo.tipo === '0' ? '📁' : '📄';
+                    let colorIcono = archivo.tipo === '0' ? 'var(--warning)' : '#ccc';
+                    
+                    let onclickAction = "";
+                    if (archivo.tipo === '0') {
+                        onclickAction = `onclick="cargarCarpetaFisica('${archivo.ruta}')"`;
+                    } else if (archivo.nombre.endsWith('.dsk') || archivo.nombre.endsWith('.mia')) {
+                        colorIcono = 'var(--cyan)';
+                        // Opcional: Al darle clic a un disco en físico, nos manda a la vista de Discos
+                        onclickAction = `onclick="changeView('disks');"`; 
+                    }
+
+                    grid.innerHTML += `
+                        <div class="grid-item" ${onclickAction}>
+                            <div class="icon" style="color: ${colorIcono};">${icono}</div>
+                            <div class="item-name">${archivo.nombre}</div>
+                        </div>`;
+                });
+
+            } catch (error) {
+                grid.innerHTML = "<p style='color: var(--danger); padding: 20px;'>Error de conexión.</p>";
+            }
+        }
+
+
+        // ================= EXPLORADOR EXT2 (SESIÓN) =================
+        async function cargarCarpetaExt2(ruta) {
+            document.getElementById('rutaExt2Actual').innerText = ruta;
+            const grid = document.getElementById('gridExt2');
+            grid.innerHTML = "<p style='padding: 20px;'>Leyendo partición...</p>";
+
+            try {
+                const response = await fetch(`http://localhost:3000/explorar?ruta=${encodeURIComponent(ruta)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    grid.innerHTML = `<p style='color: var(--danger); padding: 20px;'>${data.error}</p>`;
+                    return;
+                }
+
+                grid.innerHTML = ""; 
+
+                if (ruta !== '/') {
+                    const rutaPadre = ruta.substring(0, ruta.lastIndexOf('/')) || '/';
+                    grid.innerHTML += `
+                        <div class="grid-item" onclick="cargarCarpetaExt2('${rutaPadre}')">
+                            <div class="icon" style="color: var(--warning);">📁</div>
+                            <div class="item-name">.. (Regresar)</div>
+                        </div>`;
+                }
+
+                if (!data.archivos || data.archivos.length === 0) {
+                    grid.innerHTML += "<p style='padding: 20px;'>Carpeta vacía.</p>";
+                    return;
+                }
+
+                data.archivos.forEach(archivo => {
+                    const nombreItem = archivo.nombre.trim();
+                    
+                    // PARCHE DE SEGURIDAD: 
+                    // Si el backend falla, forzamos a que sea archivo si tiene un punto en el nombre
+                    // (Excluyendo las carpetas especiales '.' y '..')
+                    const esArchivo = archivo.tipo === '1' || (nombreItem.includes('.') && nombreItem !== '.' && nombreItem !== '..');
+                    
+                    const icono = esArchivo ? '📄' : '📁';
+                    const colorIcono = esArchivo ? 'var(--accent)' : 'var(--warning)';
+                    
+                    let onclickAction = "";
+                    if (!esArchivo) {
+                        // Es Carpeta: Navegamos hacia adentro
+                        const nuevaRuta = ruta === '/' ? `/${nombreItem}` : `${ruta}/${nombreItem}`;
+                        onclickAction = `onclick="cargarCarpetaExt2('${nuevaRuta}')"`;
+                    } else {
+                        // Es Archivo: Hacemos CAT para leerlo
+                        const rutaArchivo = ruta === '/' ? `/${nombreItem}` : `${ruta}/${nombreItem}`;
+                        onclickAction = `onclick="verContenido('${rutaArchivo}')"`;
+                    }
+
+                    grid.innerHTML += `
+                        <div class="grid-item" ${onclickAction}>
+                            <div class="icon" style="color: ${colorIcono};">${icono}</div>
+                            <div class="item-name">${nombreItem}</div>
+                        </div>`;
+                });
+
+            } catch (error) {
+                grid.innerHTML = "<p style='color: var(--danger); padding: 20px;'>Error de conexión.</p>";
+            }
+        }
+
+        // Para ver el contenido con CAT dentro del EXT2
+        async function verContenido(rutaArchivo) {
+            await ejecutar(`cat -file1="${rutaArchivo}"`);
+        }
+
+        // --- ARRANQUE INICIAL ---
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if(urlParams.get('view') === 'explorer') {
+                changeView('explorer-ext2');
+            } else {
+                changeView('disks');
+            }
+        };
     </script>
 </body>
 </html>

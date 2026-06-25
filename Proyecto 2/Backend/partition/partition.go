@@ -10,6 +10,7 @@ import (
 	"unsafe"
 )
 
+
 func CreatePartition(tamanio int64, unidad, path, tipo, ajuste, nombre string) {
 	
 	
@@ -200,3 +201,4 @@ func insertarLogica(archivo *os.File, mbr types.MBR, tamanio int64, unidad strin
 		}
 	}
 }
+

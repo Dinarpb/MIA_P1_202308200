@@ -14,9 +14,8 @@ import (
 
 func CalcularEstructuras(tamanioParticion int64) int64 {
 	tamanioSuperbloque := int64(unsafe.Sizeof(types.SuperBloque{}))
-	tamanioInodo := int64(unsafe.Sizeof(types.Inodo{}))
+	tamanioInodo := int64(binary.Size(types.Inodo{}))
 
-	// ¡EL CAMBIO ESTÁ AQUÍ! Todo bloque mide 1024 bytes
 	tamanioBloque := int64(1024)
 
 	numerador := tamanioParticion - tamanioSuperbloque
@@ -87,7 +86,7 @@ func Mkfs(id string, tipo string) {
 		S_free_inodes_count: int32(n),
 		S_mnt_count:         1,
 		S_magic:             0xEF53,
-		S_inode_s:           int32(unsafe.Sizeof(types.Inodo{})),
+		S_inode_s:           int32(binary.Size(types.Inodo{})),
 		S_block_s:           int32(BLOCK_SIZE), S_first_ino: 0,
 		S_first_blo: 0,
 	}

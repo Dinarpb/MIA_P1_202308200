@@ -3,6 +3,7 @@ package main
 import (
 	// Descomenta la ruta de tu paquete analizador
 	"MIAP1/analyzer"
+	"MIAP1/filesystem"
 	"MIAP1/global"
 	"MIAP1/types"
 	"MIAP1/users"
@@ -31,14 +32,22 @@ type PeticionComando struct {
 }
 
 type ParticionEstado struct {
-	Nombre  string `json:"nombre"`
-	Montada bool   `json:"montada"`
-	Id      string `json:"id"` // El ID de montaje si existe
+	Nombre  string                      `json:"nombre"`
+	Montada bool                        `json:"montada"`
+	Id      string                      `json:"id"` // El ID de montaje si existe
+	Espacio filesystem.EspacioParticion `json:"espacio"`
 }
 
 type DiscoEstado struct {
 	Path        string            `json:"path"`
+	TamanoTotal int64             `json:"tamanoTotal"`
 	Particiones []ParticionEstado `json:"particiones"`
+}
+
+type Archivo struct {
+	Nombre string `json:"nombre"`
+	Tipo   string `json:"tipo"` // "0" para carpeta, "1" para archivo
+	Ruta   string `json:"ruta"`
 }
 
 func main() {
@@ -57,10 +66,27 @@ func main() {
 
 	router.GET("/sistema", func(c *gin.Context) {
 		var sistema []DiscoEstado
+		var files []string
 
-		// 1. Escanear tus discos físicos (ajusta la ruta donde los guardas)
-		files, _ := filepath.Glob("/home/dinaarpb/mia/*.dsk")
+		// 1. Ruta base donde empezará a buscar (puedes ajustarla si necesitas buscar desde más atrás)
+		rutaBase := "/home/dinaarpb"
 
+		// 2. Escanear recursivamente buscando .dsk y .mia
+		filepath.WalkDir(rutaBase, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil // Ignorar carpetas a las que no tengamos permiso y seguir buscando
+			}
+			// Si no es un directorio, verificamos la extensión
+			if !d.IsDir() {
+				ext := strings.ToLower(filepath.Ext(path))
+				if ext == ".dsk" || ext == ".mia" {
+					files = append(files, path)
+				}
+			}
+			return nil
+		})
+
+		// 3. Procesar los archivos encontrados
 		for _, file := range files {
 			// Abrir el disco para leer el MBR
 			archivo, err := os.OpenFile(file, os.O_RDONLY, 0644)
@@ -70,10 +96,10 @@ func main() {
 			mbr := utils.ObtenerMBR(archivo)
 			archivo.Close()
 
-			// 2. Preparar el objeto del disco
+			// Preparar el objeto del disco
 			disco := DiscoEstado{Path: file, Particiones: []ParticionEstado{}}
 
-			// 3. Buscar si este disco está en la lista de montados (global.DiscosMontados)
+			// Buscar si este disco está en la lista de montados
 			var discoMontado *global.DiscoMontado = nil
 			for _, d := range global.DiscosMontados {
 				if d.Path == file {
@@ -82,19 +108,19 @@ func main() {
 				}
 			}
 
-			// 4. Recorrer las particiones del MBR físico
+			// Recorrer las particiones del MBR físico
 			for i := 0; i < 4; i++ {
 				if mbr.Mbr_partitions[i].Part_status == '1' {
 					nombre := strings.TrimRight(string(mbr.Mbr_partitions[i].Part_name[:]), "\x00")
 
-					// Verificar si esta partición específica está en la lista de montados
+					// Verificar si esta partición específica está montada
 					estaMontada := false
 					idMontaje := ""
 					if discoMontado != nil {
 						for _, p := range discoMontado.Particiones {
 							if p.Nombre == nombre {
 								estaMontada = true
-								idMontaje = p.ID // Usamos el ID que ya generas
+								idMontaje = p.ID
 								break
 							}
 						}
@@ -205,7 +231,7 @@ func main() {
 						binary.Read(archivo, binary.LittleEndian, &inodoHijo)
 
 						tipoStr := "0"
-						if inodoHijo.I_type == '1' {
+						if inodoHijo.I_type == '1' || inodoHijo.I_type == 1 {
 							tipoStr = "1"
 						}
 
@@ -224,8 +250,37 @@ func main() {
 			"archivos": elementos,
 		})
 	})
+	// Reemplaza tu explorarHandler y el http.HandleFunc por este bloque dentro de func main()
 
-	// 5. Levantar el servidor en el puerto 3000
+	router.GET("/explorar-fisico", func(c *gin.Context) {
+		ruta := c.Query("ruta")
+		if ruta == "" {
+			ruta = "/home/dinaarpb"
+		}
+
+		entradas, err := os.ReadDir(ruta)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("No se pudo leer la ruta: %v", err)})
+			return
+		}
+
+		var archivos []Archivo
+		for _, entrada := range entradas {
+			tipo := "1" // Por defecto es un archivo
+			if entrada.IsDir() {
+				tipo = "0" // Es una carpeta
+			}
+
+			archivos = append(archivos, Archivo{
+				Nombre: entrada.Name(),
+				Tipo:   tipo,
+				Ruta:   filepath.Join(ruta, entrada.Name()),
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{"archivos": archivos})
+	})
+
 	fmt.Println("🚀 Servidor corriendo en http://localhost:3000")
 	router.Run(":3000")
 }

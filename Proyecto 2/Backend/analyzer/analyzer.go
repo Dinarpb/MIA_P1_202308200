@@ -178,15 +178,27 @@ func AnalizarComando(entrada string) {
 
 func extraerParametros(entrada string) map[string]string {
 	parametros := make(map[string]string)
-	re := regexp.MustCompile(`-(\w+)=("[^"]+"|\S+)`)
-	coincidencias := re.FindAllStringSubmatch(entrada, -1)
 
+	// 1. Capturamos los pares -clave=valor (con o sin comillas)
+	reValor := regexp.MustCompile(`-(\w+)=("[^"]+"|\S+)`)
+	coincidencias := reValor.FindAllStringSubmatch(entrada, -1)
 	for _, coincidencia := range coincidencias {
 		clave := strings.ToLower(coincidencia[1])
 		valor := strings.Trim(coincidencia[2], "\"")
 		valor = strings.ReplaceAll(valor, "\"", "")
 		valor = strings.ReplaceAll(valor, "'", "")
 		parametros[clave] = valor
+	}
+
+	// 2. Quitamos lo ya capturado y buscamos flags sueltos (-p, -r, etc.)
+	restante := reValor.ReplaceAllString(entrada, "")
+	reFlag := regexp.MustCompile(`-(\w+)`)
+	flags := reFlag.FindAllStringSubmatch(restante, -1)
+	for _, f := range flags {
+		clave := strings.ToLower(f[1])
+		if _, existe := parametros[clave]; !existe {
+			parametros[clave] = "" // presente, pero sin valor (flag booleano)
+		}
 	}
 
 	return parametros
@@ -242,7 +254,7 @@ func analizarRmdisk(parametros string) {
 }
 
 func analizarFdisk(parametros map[string]string) {
-	
+
 	path, okPath := parametros["path"]
 	name, okName := parametros["name"]
 
@@ -422,12 +434,20 @@ func analizarMkusr(parametros map[string]string) {
 
 func analizarMkdir(parametros map[string]string) {
 	path, ok := parametros["path"]
-	_, p := parametros["p"]
-
 	if !ok {
 		fmt.Println("[ERROR] Falta -path.")
 		return
 	}
+
+	p := false
+	if valorP, existe := parametros["p"]; existe {
+		if valorP != "" {
+			fmt.Println("[ERROR] El parámetro -p no debe recibir ningún valor.")
+			return
+		}
+		p = true
+	}
+
 	filesystem.Mkdir(path, p)
 }
 
@@ -438,14 +458,31 @@ func analizarMkfile(parametros map[string]string) {
 		return
 	}
 
-	size := 0
-	if val, ok := parametros["size"]; ok {
-		size, _ = strconv.Atoi(val)
+	r := false
+	if valorR, existe := parametros["r"]; existe {
+		if valorR != "" {
+			fmt.Println("[ERROR] El parámetro -r no debe recibir ningún valor.")
+			return
+		}
+		r = true
 	}
 
-	_, r := parametros["r"]
+	size := 0
+	if val, ok := parametros["size"]; ok {
+		sizeConv, err := strconv.Atoi(val)
+		if err != nil {
+			fmt.Println("[ERROR] -size debe ser un número.")
+			return
+		}
+		size = sizeConv
+	}
 
-	filesystem.Mkfile(path, r, size)
+	cont := ""
+	if val, ok := parametros["cont"]; ok {
+		cont = val
+	}
+
+	filesystem.Mkfile(path, r, size, cont)
 }
 
 func analizarPause(parametros map[string]string) {
