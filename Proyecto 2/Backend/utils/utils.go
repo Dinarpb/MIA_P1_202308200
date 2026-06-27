@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"unsafe"
 )
 
 var IdParticionActual string = ""
+
+const RutaBaseEspejo = "/home/dinaarpb/espejo_ext2"
 
 func Tamanio(tamanio int64, unit string) int64 {
 	if strings.Compare(unit, "k") == 0 {
@@ -48,7 +51,7 @@ func BuscarInodoPorRuta(archivo *os.File, sb types.SuperBloque, ruta string) (in
 	var inodoActual types.Inodo
 	inodoActualIndex := 0
 
-	fmt.Printf("[DEBUG] Verificando Inodo 0 (Raíz) en bloque %d\n", inodoActual.I_block[0])
+	//fmt.Printf("[DEBUG] Verificando Inodo 0 (Raíz) en bloque %d\n", inodoActual.I_block[0])
 
 	// Limpieza absoluta
 	ruta = strings.TrimSpace(ruta)
@@ -194,17 +197,18 @@ func ObtenerContextoParticion() (*os.File, types.SuperBloque, int32, types.Inodo
 
 	fmt.Printf("\n--- [DEBUG LOGIN] Intentando acceder a partición con ID: '%s' ---\n", IdParticionActual)
 
-	if len(global.DiscosMontados) == 0 {
-		fmt.Println("[DEBUG] ERROR: La lista global.DiscosMontados está vacía. ¡No hay particiones montadas!")
-	}
+	/*
+		if len(global.DiscosMontados) == 0 {
+			fmt.Println("[DEBUG] ERROR: La lista global.DiscosMontados está vacía. ¡No hay particiones montadas!")
+		}*/
 
 	for _, disco := range global.DiscosMontados {
 		for _, particion := range disco.Particiones {
-			fmt.Printf("[DEBUG] Revisando partición montada -> ID: '%s', Nombre: '%s'\n", particion.ID, particion.Nombre)
+			//fmt.Printf("[DEBUG] Revisando partición montada -> ID: '%s', Nombre: '%s'\n", particion.ID, particion.Nombre)
 
 			if particion.ID == IdParticionActual {
 				rutaDisco = disco.Path
-				fmt.Printf("[DEBUG] ¡Coincidencia de ID! Ruta del disco: %s\n", rutaDisco)
+				//fmt.Printf("[DEBUG] ¡Coincidencia de ID! Ruta del disco: %s\n", rutaDisco)
 
 				archivoTemp, errTemp := os.OpenFile(rutaDisco, os.O_RDONLY, 0644)
 				if errTemp == nil {
@@ -213,13 +217,13 @@ func ObtenerContextoParticion() (*os.File, types.SuperBloque, int32, types.Inodo
 						nombrePart := strings.TrimRight(string(mbr.Mbr_partitions[i].Part_name[:]), "\x00")
 						if mbr.Mbr_partitions[i].Part_status == '1' && nombrePart == particion.Nombre {
 							partStart = mbr.Mbr_partitions[i].Part_start
-							fmt.Printf("[DEBUG] Partición encontrada en el MBR físico en el byte: %d\n", partStart)
+							//fmt.Printf("[DEBUG] Partición encontrada en el MBR físico en el byte: %d\n", partStart)
 							break
 						}
 					}
 					archivoTemp.Close()
 				} else {
-					fmt.Printf("[DEBUG] ERROR: No se pudo abrir el disco físico en la ruta: %s\n", rutaDisco)
+					//fmt.Printf("[DEBUG] ERROR: No se pudo abrir el disco físico en la ruta: %s\n", rutaDisco)
 				}
 				break
 			}
@@ -230,18 +234,18 @@ func ObtenerContextoParticion() (*os.File, types.SuperBloque, int32, types.Inodo
 	}
 
 	if rutaDisco == "" {
-		fmt.Println("[DEBUG] ERROR FINAL: No se encontró el ID en memoria.")
+		//fmt.Println("[DEBUG] ERROR FINAL: No se encontró el ID en memoria.")
 		return nil, types.SuperBloque{}, -1, types.Inodo{}, -1, fmt.Errorf("no se encontró partición montada con el ID '%s'", IdParticionActual)
 	}
 
 	if partStart == -1 {
-		fmt.Println("[DEBUG] ERROR FINAL: La partición está en memoria pero no en el MBR (¿fue borrada con FDISK?).")
+		//fmt.Println("[DEBUG] ERROR FINAL: La partición está en memoria pero no en el MBR (¿fue borrada con FDISK?).")
 		return nil, types.SuperBloque{}, -1, types.Inodo{}, -1, fmt.Errorf("partición no encontrada en el MBR")
 	}
 
 	archivo, err := os.OpenFile(rutaDisco, os.O_RDWR, 0644)
 	if err != nil {
-		fmt.Println("[DEBUG] ERROR FINAL: No se pudo abrir el disco para lectura/escritura.")
+		//fmt.Println("[DEBUG] ERROR FINAL: No se pudo abrir el disco para lectura/escritura.")
 		return nil, types.SuperBloque{}, -1, types.Inodo{}, -1, fmt.Errorf("error abriendo disco")
 	}
 
@@ -249,16 +253,16 @@ func ObtenerContextoParticion() (*os.File, types.SuperBloque, int32, types.Inodo
 	archivo.Seek(partStart, 0)
 	binary.Read(archivo, binary.LittleEndian, &sb)
 
-	fmt.Println("[DEBUG] Buscando archivo /users.txt...")
+	//fmt.Println("[DEBUG] Buscando archivo /users.txt...")
 	inodoIndex, inodoUsers, errInodo := BuscarInodoPorRuta(archivo, sb, "/users.txt")
 	if errInodo != nil {
 		archivo.Close()
-		fmt.Printf("[DEBUG] ERROR FINAL: %v\n", errInodo)
-		fmt.Println("[DEBUG] ¿Ejecutaste el comando MKFS antes de intentar hacer login?")
+		//fmt.Printf("[DEBUG] ERROR FINAL: %v\n", errInodo)
+		//fmt.Println("[DEBUG] ¿Ejecutaste el comando MKFS antes de intentar hacer login?")
 		return nil, types.SuperBloque{}, -1, types.Inodo{}, -1, fmt.Errorf("error buscando users.txt")
 	}
 
-	fmt.Println("[DEBUG] ¡Contexto obtenido con éxito!")
+	//fmt.Println("[DEBUG] ¡Contexto obtenido con éxito!")
 	return archivo, sb, int32(inodoIndex), inodoUsers, partStart, nil
 }
 
@@ -316,4 +320,62 @@ func BuscarInodoLibre(archivo *os.File, sb *types.SuperBloque) int32 {
 		}
 	}
 	return -1
+}
+
+func ReflejarCreacion(rutaVirtual string, esCarpeta bool, contenido string) {
+	// 1. Limpiar la ruta y concatenarla con la base física
+	rutaVirtualLimpia := strings.TrimPrefix(rutaVirtual, "/")
+	rutaFisica := filepath.Join(RutaBaseEspejo, rutaVirtualLimpia)
+
+	// 2. Ejecutar la acción correspondiente
+	if esCarpeta {
+		// Crear directorio real (equivalente a mkdir -p)
+		err := os.MkdirAll(rutaFisica, 0755)
+		if err != nil {
+			fmt.Printf("[ESPEJO-ERROR] No se pudo crear la carpeta real '%s': %v\n", rutaFisica, err)
+		} else {
+			fmt.Printf("[ESPEJO] Carpeta creada físicamente en: %s\n", rutaFisica)
+		}
+	} else {
+		// Crear los directorios padres si no existen
+		os.MkdirAll(filepath.Dir(rutaFisica), 0755)
+
+		// Crear archivo real y escribir su contenido
+		err := os.WriteFile(rutaFisica, []byte(contenido), 0644)
+		if err != nil {
+			fmt.Printf("[ESPEJO-ERROR] No se pudo crear el archivo real '%s': %v\n", rutaFisica, err)
+		} else {
+			fmt.Printf("[ESPEJO] Archivo creado físicamente en: %s\n", rutaFisica)
+		}
+	}
+}
+
+// ReflejarEliminacion borra el archivo/carpeta del sistema real
+func ReflejarEliminacion(rutaVirtual string) {
+	rutaVirtualLimpia := strings.TrimPrefix(rutaVirtual, "/")
+	rutaFisica := filepath.Join(RutaBaseEspejo, rutaVirtualLimpia)
+
+	err := os.RemoveAll(rutaFisica)
+	if err != nil {
+		fmt.Printf("[ESPEJO-ERROR] No se pudo eliminar '%s': %v\n", rutaFisica, err)
+	} else {
+		fmt.Printf("[ESPEJO] Eliminado físicamente: %s\n", rutaFisica)
+	}
+}
+
+// ReflejarRenombrar cambia el nombre en el sistema real
+func ReflejarRenombrar(rutaVirtualVieja string, nuevoNombre string) {
+	rutaVirtualLimpia := strings.TrimPrefix(rutaVirtualVieja, "/")
+	rutaFisicaVieja := filepath.Join(RutaBaseEspejo, rutaVirtualLimpia)
+
+	// Calcular la nueva ruta física
+	directorioPadre := filepath.Dir(rutaFisicaVieja)
+	rutaFisicaNueva := filepath.Join(directorioPadre, nuevoNombre)
+
+	err := os.Rename(rutaFisicaVieja, rutaFisicaNueva)
+	if err != nil {
+		fmt.Printf("[ESPEJO-ERROR] No se pudo renombrar a '%s': %v\n", rutaFisicaNueva, err)
+	} else {
+		fmt.Printf("[ESPEJO] Renombrado físicamente a: %s\n", rutaFisicaNueva)
+	}
 }

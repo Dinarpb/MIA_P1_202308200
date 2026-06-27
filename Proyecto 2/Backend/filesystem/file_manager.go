@@ -7,8 +7,8 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,6 +16,8 @@ import (
 )
 
 func Mkfile(ruta string, r bool, size int, rutaContenido string) {
+	contenidoAEscribir := ""
+
 	if !users.SesionActiva {
 		fmt.Println("[ERROR] No hay sesión activa.")
 		return
@@ -176,6 +178,10 @@ func Mkfile(ruta string, r bool, size int, rutaContenido string) {
 	binary.Write(archivo, binary.LittleEndian, &sb)
 
 	fmt.Printf("[ÉXITO] Archivo creado en %s con tamaño %d bytes.\n", ruta, len(contenidoNuevo))
+
+	fmt.Println("[ÉXITO] Archivo creado en EXT2.")
+	utils.ReflejarCreacion(ruta, false, contenidoAEscribir)
+
 }
 
 func Mkdir(ruta string, p bool) {
@@ -243,6 +249,8 @@ func Mkdir(ruta string, p bool) {
 		binary.Write(archivo, binary.LittleEndian, &sb)
 		fmt.Printf("[ÉXITO] Directorio '%s' creado.\n", ruta)
 	}
+	fmt.Println("[ÉXITO] Carpeta creada en EXT2.")
+	utils.ReflejarCreacion(ruta, true, "")
 }
 
 func generarContenidoMkfile(size int) string {
@@ -402,19 +410,7 @@ func crearDirectorioFisico(archivo *os.File, sb *types.SuperBloque, padreIndex i
 	return true
 }
 
-func Rename(ruta string, nuevoNombre string) {
-	// 1. Limpieza absoluta contra caracteres basura
-	ruta = strings.TrimSpace(ruta)
-	ruta = strings.ReplaceAll(ruta, "\r", "")
-	ruta = strings.ReplaceAll(ruta, "\n", "")
-	ruta = strings.ReplaceAll(ruta, "\"", "")
-	ruta = strings.TrimSuffix(ruta, "/")
-
-	nuevoNombre = strings.TrimSpace(nuevoNombre)
-	nuevoNombre = strings.ReplaceAll(nuevoNombre, "\r", "")
-	nuevoNombre = strings.ReplaceAll(nuevoNombre, "\n", "")
-	nuevoNombre = strings.ReplaceAll(nuevoNombre, "\"", "")
-
+func Remove(ruta string) {
 	if !users.SesionActiva {
 		fmt.Println("[ERROR] No hay sesión activa.")
 		return
@@ -422,27 +418,29 @@ func Rename(ruta string, nuevoNombre string) {
 
 	archivo, sb, _, _, _, err := utils.ObtenerContextoParticion()
 	if err != nil {
-		fmt.Println("[ERROR] No se pudo acceder a la partición activa.")
 		return
 	}
 	defer archivo.Close()
 
-	directorioPadre := filepath.Dir(ruta)
-	nombreActual := filepath.Base(ruta)
+	// 1. Separar la ruta para obtener el padre y el nombre a eliminar
+	rutaLimpia := strings.TrimRight(ruta, "/")
+	partes := strings.Split(rutaLimpia, "/")
+	nombreAEliminar := partes[len(partes)-1]
 
-	// 2. Buscar Inodo Padre
-	_, inodoPadre, errPadre := utils.BuscarInodoPorRuta(archivo, sb, directorioPadre)
-	if errPadre != nil {
-		fmt.Printf("[ERROR] La ruta padre '%s' no existe.\n", directorioPadre)
+	rutaPadre := "/"
+	if len(partes) > 2 {
+		rutaPadre = strings.Join(partes[:len(partes)-1], "/")
+	}
+
+	// 2. Buscar Inodo del Padre
+	_, inodoPadre, errP := utils.BuscarInodoPorRuta(archivo, sb, rutaPadre)
+	if errP != nil {
+		fmt.Println("[ERROR] La ruta base (padre) no existe.")
 		return
 	}
 
-	// 3. Buscar el nombre actual y verificar que el nuevo nombre no exista
-	encontrado := false
-	var bloqueModificar int32 = -1
-	var indexModificar int = -1
-	var bcModificar types.BloqueCarpeta
-
+	// 3. Iterar los bloques del padre para encontrar la referencia y borrarla
+	modificado := false
 	for i := 0; i < 12; i++ {
 		if inodoPadre.I_block[i] != -1 {
 			var bc types.BloqueCarpeta
@@ -450,544 +448,87 @@ func Rename(ruta string, nuevoNombre string) {
 			archivo.Seek(offset, 0)
 			binary.Read(archivo, binary.LittleEndian, &bc)
 
+			// Buscar el archivo/carpeta a eliminar
 			for j := 0; j < 4; j++ {
-				if bc.B_content[j].B_inodo != -1 {
-					nombreItem := strings.TrimRight(string(bc.B_content[j].B_name[:]), "\x00")
+				nombre := strings.TrimRight(string(bc.B_content[j].B_name[:]), "\x00")
+				if nombre == nombreAEliminar {
 
-					// Regla del manual: No puede llamarse igual a otro existente
-					if nombreItem == nuevoNombre {
-						fmt.Printf("[ERROR] Ya existe un archivo o carpeta con el nombre '%s'.\n", nuevoNombre)
-						return
-					}
+					// ELIMINACIÓN LÓGICA:
+					// 1. Vaciamos el nombre
+					bc.B_content[j].B_name = [12]byte{}
+					// 2. Rompemos el apuntador al Inodo (-1)
+					bc.B_content[j].B_inodo = -1
 
-					// Identificar el bloque y posición que vamos a modificar
-					if nombreItem == nombreActual {
-						encontrado = true
-						bloqueModificar = inodoPadre.I_block[i]
-						indexModificar = j
-						bcModificar = bc
-					}
+					// Guardar el bloque carpeta modificado en el disco .dsk
+					archivo.Seek(offset, 0)
+					binary.Write(archivo, binary.LittleEndian, &bc)
+					modificado = true
+					break
 				}
 			}
 		}
-	}
-
-	if !encontrado {
-		fmt.Printf("[ERROR] El elemento '%s' no existe.\n", nombreActual)
-		return
-	}
-
-	// 4. Aplicar el cambio de nombre en la memoria RAM
-	for k := 0; k < len(bcModificar.B_content[indexModificar].B_name); k++ {
-		bcModificar.B_content[indexModificar].B_name[k] = 0 // Limpiar caracteres viejos (\x00)
-	}
-	copy(bcModificar.B_content[indexModificar].B_name[:], nuevoNombre)
-
-	// 5. Escribir el bloque actualizado al disco físico
-	offsetMod := int64(sb.S_block_start) + (int64(bloqueModificar) * int64(sb.S_block_s))
-	archivo.Seek(offsetMod, 0)
-	binary.Write(archivo, binary.LittleEndian, &bcModificar)
-
-	fmt.Printf("[ÉXITO] Se renombró '%s' a '%s' correctamente.\n", nombreActual, nuevoNombre)
-}
-
-func Remove(ruta string) {
-	// 1. Limpieza absoluta contra caracteres basura
-	ruta = strings.TrimSpace(ruta)
-	ruta = strings.ReplaceAll(ruta, "\r", "")
-	ruta = strings.ReplaceAll(ruta, "\n", "")
-	ruta = strings.ReplaceAll(ruta, "\"", "")
-	ruta = strings.TrimSuffix(ruta, "/")
-
-	if !users.SesionActiva {
-		fmt.Println("[ERROR] No hay sesión activa.")
-		return
-	}
-
-	archivo, sb, _, _, partStart, err := utils.ObtenerContextoParticion()
-	if err != nil {
-		fmt.Println("[ERROR] No se pudo acceder a la partición activa.")
-		return
-	}
-	defer archivo.Close()
-
-	directorioPadre := filepath.Dir(ruta)
-	nombreEliminar := filepath.Base(ruta)
-
-	// 2. Buscar al Inodo Padre
-	_, inodoPadre, errPadre := utils.BuscarInodoPorRuta(archivo, sb, directorioPadre)
-	if errPadre != nil {
-		fmt.Printf("[ERROR] La ruta padre '%s' no existe.\n", directorioPadre)
-		return
-	}
-
-	// 3. Buscar el elemento a eliminar dentro del padre y desenlazarlo
-	encontrado := false
-	var bloqueModificar int32 = -1
-	var indexModificar int = -1
-	var bcModificar types.BloqueCarpeta
-	var inodoDestinoIndex int32 = -1
-
-	for i := 0; i < 12; i++ {
-		if inodoPadre.I_block[i] != -1 {
-			var bc types.BloqueCarpeta
-			offset := int64(sb.S_block_start) + (int64(inodoPadre.I_block[i]) * int64(sb.S_block_s))
-			archivo.Seek(offset, 0)
-			binary.Read(archivo, binary.LittleEndian, &bc)
-
-			for j := 0; j < 4; j++ {
-				if bc.B_content[j].B_inodo != -1 {
-					nombreItem := strings.TrimRight(string(bc.B_content[j].B_name[:]), "\x00")
-
-					if nombreItem == nombreEliminar {
-						encontrado = true
-						bloqueModificar = inodoPadre.I_block[i]
-						indexModificar = j
-						bcModificar = bc
-						inodoDestinoIndex = bc.B_content[j].B_inodo
-						break
-					}
-				}
-			}
-		}
-		if encontrado {
+		if modificado {
 			break
 		}
 	}
 
-	if !encontrado {
-		fmt.Printf("[ERROR] El elemento '%s' no existe.\n", nombreEliminar)
-		return
+	if modificado {
+		archivo.Sync()
+		fmt.Printf("[ÉXITO] '%s' eliminado correctamente del sistema EXT2.\n", nombreAEliminar)
+
+		// LLAMADA AL ESPEJO: Borrar el archivo en tu carpeta física de Ubuntu
+		utils.ReflejarEliminacion(ruta)
+	} else {
+		fmt.Println("[ERROR] No se encontró el archivo/carpeta a eliminar.")
 	}
-
-	// NOTA DE PERMISOS: Aquí deberías validar si el usuario actual (users.UsuarioActual.Uid)
-	// tiene permisos de escritura ('2' o '6' o '7') sobre el inodo que está en inodoDestinoIndex.
-	// Si no tiene, haces un return.
-
-	// 4. Aplicar la eliminación lógica (Desenlazar)
-	bcModificar.B_content[indexModificar].B_inodo = -1
-	for k := 0; k < len(bcModificar.B_content[indexModificar].B_name); k++ {
-		bcModificar.B_content[indexModificar].B_name[k] = 0 // Limpiar caracteres
-	}
-
-	// 5. Escribir el bloque del padre actualizado al disco físico
-	offsetMod := int64(sb.S_block_start) + (int64(bloqueModificar) * int64(sb.S_block_s))
-	archivo.Seek(offsetMod, 0)
-	binary.Write(archivo, binary.LittleEndian, &bcModificar)
-
-	// 6. Liberar el inodo en el Bitmap (Para que pueda ser reusado)
-	archivo.Seek(int64(sb.S_bm_inode_start)+int64(inodoDestinoIndex), 0)
-	binary.Write(archivo, binary.LittleEndian, byte('0'))
-
-	sb.S_free_inodes_count++ // Aumentamos la cantidad de inodos libres
-
-	// 7. Actualizar el SuperBloque
-	archivo.Seek(partStart, 0)
-	binary.Write(archivo, binary.LittleEndian, &sb)
-
-	fmt.Printf("[ÉXITO] Se eliminó '%s' correctamente del árbol.\n", nombreEliminar)
-}
-
-func Edit(ruta string, rutaContenido string) {
-	// 1. Limpieza absoluta de rutas
-	ruta = strings.TrimSpace(ruta)
-	ruta = strings.ReplaceAll(ruta, "\r", "")
-	ruta = strings.ReplaceAll(ruta, "\n", "")
-	ruta = strings.ReplaceAll(ruta, "\"", "")
-
-	rutaContenido = strings.TrimSpace(rutaContenido)
-	rutaContenido = strings.ReplaceAll(rutaContenido, "\r", "")
-	rutaContenido = strings.ReplaceAll(rutaContenido, "\n", "")
-	rutaContenido = strings.ReplaceAll(rutaContenido, "\"", "")
-
-	if !users.SesionActiva {
-		fmt.Println("[ERROR] No hay sesión activa.")
-		return
-	}
-
-	// 2. Leer el archivo FÍSICO desde tu sistema operativo real
-	nuevoContenido, errSO := os.ReadFile(rutaContenido)
-	if errSO != nil {
-		fmt.Printf("[ERROR] No se pudo leer el archivo físico en: '%s'\n", rutaContenido)
-		return
-	}
-	cadenaContenido := string(nuevoContenido)
-
-	archivo, sb, _, _, partStart, err := utils.ObtenerContextoParticion()
-	if err != nil {
-		fmt.Println("[ERROR] No se pudo acceder a la partición activa.")
-		return
-	}
-	defer archivo.Close()
-
-	// 3. Buscar el inodo del archivo a editar en tu .dsk
-	inodoIndex, inodoArchivo, errArchivo := utils.BuscarInodoPorRuta(archivo, sb, ruta)
-	if errArchivo != nil {
-		fmt.Printf("[ERROR] El archivo '%s' no existe en el disco simulado.\n", ruta)
-		return
-	}
-
-	// 4. Validar que sea un archivo ('1') y no una carpeta ('0')
-	if inodoArchivo.I_type == '0' {
-		fmt.Println("[ERROR] La ruta especificada es una carpeta. Solo se pueden editar archivos.")
-		return
-	}
-
-	if !utils.TienePermiso(users.UsuarioActualUID, users.UsuarioActualGID, inodoArchivo, 2) {
-		fmt.Println("[ERROR] Permiso denegado: El usuario no tiene derechos de escritura sobre este archivo.")
-		return
-	}
-
-	// 5. Liberar los bloques de datos antiguos en el Bitmap
-	for i := 0; i < 12; i++ {
-		if inodoArchivo.I_block[i] != -1 {
-			archivo.Seek(int64(sb.S_bm_block_start)+int64(inodoArchivo.I_block[i]), 0)
-			binary.Write(archivo, binary.LittleEndian, byte('0')) // Marcar como libre
-			inodoArchivo.I_block[i] = -1
-			sb.S_free_blocks_count++
-		}
-	}
-
-	// 6. Calcular cuántos bloques nuevos necesitamos (cada bloque de archivo guarda 64 bytes)
-	bloquesNecesarios := int32(math.Ceil(float64(len(cadenaContenido)) / 64.0))
-	if bloquesNecesarios > 12 {
-		fmt.Println("[ERROR] El contenido es muy grande. Falta implementar bloques indirectos.")
-		return
-	}
-
-	// 7. Escribir el nuevo contenido dividiéndolo en Bloques de Archivo
-	inodoArchivo.I_size = int64(len(cadenaContenido))
-	caracteresEscritos := 0
-
-	for i := 0; int32(i) < bloquesNecesarios; i++ {
-		// Reservar un nuevo bloque libre
-		nuevoBloqueIndex := sb.S_first_blo
-		sb.S_first_blo++
-		sb.S_free_blocks_count--
-
-		// Marcarlo en el bitmap
-		archivo.Seek(int64(sb.S_bm_block_start)+int64(nuevoBloqueIndex), 0)
-		binary.Write(archivo, binary.LittleEndian, byte('1'))
-
-		// Llenar los 64 bytes de este bloque
-		var ba types.BloqueArchivo
-		for j := 0; j < 64; j++ {
-			if caracteresEscritos < len(cadenaContenido) {
-				ba.B_content[j] = cadenaContenido[caracteresEscritos]
-				caracteresEscritos++
-			} else {
-				ba.B_content[j] = 0 // Espacios vacíos al final
-			}
-		}
-
-		// Enlazar el bloque al Inodo y guardarlo en el disco físico
-		inodoArchivo.I_block[i] = nuevoBloqueIndex
-		offsetBloque := int64(sb.S_block_start) + (int64(nuevoBloqueIndex) * int64(sb.S_block_s))
-		archivo.Seek(offsetBloque, 0)
-		binary.Write(archivo, binary.LittleEndian, &ba)
-	}
-
-	// 8. Actualizar fecha de modificación (Mtime)
-	tiempo := time.Now().Format("2006-01-02 15:04:05")
-	copy(inodoArchivo.I_mtime[:], tiempo)
-
-	// 9. Sobreescribir el Inodo y el SuperBloque en el disco
-	offsetInodo := int64(sb.S_inode_start) + (int64(inodoIndex) * int64(sb.S_inode_s))
-	archivo.Seek(offsetInodo, 0)
-	binary.Write(archivo, binary.LittleEndian, &inodoArchivo)
-
-	archivo.Seek(partStart, 0)
-	binary.Write(archivo, binary.LittleEndian, &sb)
-
-	fmt.Printf("[ÉXITO] El archivo '%s' fue editado correctamente.\n", ruta)
 }
 
 func Move(rutaOrigen string, rutaDestino string) {
-	// Limpieza absoluta de rutas
-	rutaOrigen = strings.TrimSpace(rutaOrigen)
-	rutaOrigen = strings.ReplaceAll(rutaOrigen, "\r", "")
-	rutaOrigen = strings.ReplaceAll(rutaOrigen, "\n", "")
-	rutaOrigen = strings.ReplaceAll(rutaOrigen, "\"", "")
-	rutaOrigen = strings.TrimSuffix(rutaOrigen, "/")
-
-	rutaDestino = strings.TrimSpace(rutaDestino)
-	rutaDestino = strings.ReplaceAll(rutaDestino, "\r", "")
-	rutaDestino = strings.ReplaceAll(rutaDestino, "\n", "")
-	rutaDestino = strings.ReplaceAll(rutaDestino, "\"", "")
-	rutaDestino = strings.TrimSuffix(rutaDestino, "/")
-
 	if !users.SesionActiva {
 		fmt.Println("[ERROR] No hay sesión activa.")
 		return
 	}
+	rutaVirtualLimpiaOrigen := strings.TrimPrefix(rutaOrigen, "/")
+	rutaVirtualLimpiaDestino := strings.TrimPrefix(rutaDestino, "/")
 
-	archivo, sb, _, inodoUsers, partStart, err := utils.ObtenerContextoParticion()
+	// Obtenemos el nombre de lo que estamos moviendo
+	partesOrigen := strings.Split(rutaVirtualLimpiaOrigen, "/")
+	nombreElemento := partesOrigen[len(partesOrigen)-1]
+
+	rutaFisicaOrigen := filepath.Join(utils.RutaBaseEspejo, rutaVirtualLimpiaOrigen)
+	rutaFisicaDestino := filepath.Join(utils.RutaBaseEspejo, rutaVirtualLimpiaDestino, nombreElemento)
+
+	err := os.Rename(rutaFisicaOrigen, rutaFisicaDestino)
 	if err != nil {
-		fmt.Println("[ERROR] No se pudo acceder a la partición.")
-		return
+		fmt.Printf("[ESPEJO-ERROR] No se pudo mover físicamente: %v\n", err)
+	} else {
+		fmt.Printf("[ÉXITO] Elemento movido a: %s\n", rutaDestino)
 	}
-	defer archivo.Close()
-
-	obtenerIdsUsuarioActual := func() (int32, int32, error) {
-		contenido := utils.LeerArchivoUsers(archivo, sb, inodoUsers)
-		lineas := strings.Split(contenido, "\n")
-		var uidActual int32 = -1
-		var nombreGrupo string
-
-		for _, linea := range lineas {
-			linea = strings.TrimSpace(linea)
-			if linea == "" {
-				continue
-			}
-			datos := strings.Split(linea, ",")
-			if len(datos) < 5 {
-				continue
-			}
-			if strings.TrimSpace(datos[1]) != "U" {
-				continue
-			}
-			if strings.TrimSpace(datos[3]) == users.UsuarioActual {
-				uid, errConv := strconv.Atoi(strings.TrimSpace(datos[0]))
-				if errConv != nil {
-					return -1, -1, errConv
-				}
-				uidActual = int32(uid)
-				nombreGrupo = strings.TrimSpace(datos[2])
-				break
-			}
-		}
-
-		if uidActual == -1 {
-			return -1, -1, fmt.Errorf("usuario actual no encontrado")
-		}
-
-		var gidActual int32 = -1
-		for _, linea := range lineas {
-			linea = strings.TrimSpace(linea)
-			if linea == "" {
-				continue
-			}
-			datos := strings.Split(linea, ",")
-			if len(datos) < 3 {
-				continue
-			}
-			if strings.TrimSpace(datos[1]) != "G" {
-				continue
-			}
-			if strings.TrimSpace(datos[2]) == nombreGrupo {
-				gid, errConv := strconv.Atoi(strings.TrimSpace(datos[0]))
-				if errConv != nil {
-					return -1, -1, errConv
-				}
-				switch {
-				case users.UsuarioActual == "root":
-					return int32(uidActual), int32(gid), nil
-				default:
-					gidActual = int32(gid)
-				}
-				break
-			}
-		}
-
-		if gidActual == -1 {
-			return -1, -1, fmt.Errorf("grupo del usuario no encontrado")
-		}
-
-		return uidActual, gidActual, nil
-	}
-
-	tienePermisoEscritura := func(inodo types.Inodo, uidActual int32, gidActual int32) bool {
-		if users.UsuarioActual == "root" {
-			return true
-		}
-
-		permiso := inodo.I_perm[2]
-		if inodo.I_uid == uidActual {
-			permiso = inodo.I_perm[0]
-		} else if inodo.I_gid == gidActual {
-			permiso = inodo.I_perm[1]
-		}
-
-		if permiso < '0' || permiso > '7' {
-			return false
-		}
-
-		return (permiso-'0')&2 != 0
-	}
-
-	if rutaOrigen == "/" {
-		fmt.Println("[ERROR] No se puede mover la raíz del sistema.")
-		return
-	}
-
-	if rutaDestino == rutaOrigen || strings.HasPrefix(rutaDestino+"/", rutaOrigen+"/") {
-		fmt.Println("[ERROR] No se puede mover un elemento dentro de sí mismo o de su subdirectorio.")
-		return
-	}
-
-	padreOrigen := filepath.Dir(rutaOrigen)
-	nombreElemento := filepath.Base(rutaOrigen)
-
-	// Buscar al Padre Origen
-	_, inodoPadreOrigen, errPadreO := utils.BuscarInodoPorRuta(archivo, sb, padreOrigen)
-	if errPadreO != nil {
-		fmt.Printf("[ERROR] La ruta origen '%s' no existe.\n", padreOrigen)
-		return
-	}
-
-	// Buscar y aislar el elemento que vamos a mover dentro del padre origen
-	encontrado := false
-	var bloqueModificar int32 = -1
-	var indexModificar int = -1
-	var bcModificar types.BloqueCarpeta
-	var inodoMoverIndex int32 = -1
-
-	for i := 0; i < 12; i++ {
-		if inodoPadreOrigen.I_block[i] != -1 {
-			var bc types.BloqueCarpeta
-			offset := int64(sb.S_block_start) + (int64(inodoPadreOrigen.I_block[i]) * int64(sb.S_block_s))
-			archivo.Seek(offset, 0)
-			binary.Read(archivo, binary.LittleEndian, &bc)
-
-			for j := 0; j < 4; j++ {
-				if bc.B_content[j].B_inodo != -1 {
-					nombreItem := strings.TrimRight(string(bc.B_content[j].B_name[:]), "\x00")
-					if nombreItem == nombreElemento {
-						encontrado = true
-						bloqueModificar = inodoPadreOrigen.I_block[i]
-						indexModificar = j
-						bcModificar = bc
-						inodoMoverIndex = bc.B_content[j].B_inodo
-						break
-					}
-				}
-			}
-		}
-		if encontrado {
-			break
-		}
-	}
-
-	if !encontrado {
-		fmt.Printf("[ERROR] El elemento '%s' no existe en el origen.\n", nombreElemento)
-		return
-	}
-
-	var inodoMover types.Inodo
-	offsetInodoMover := int64(sb.S_inode_start) + (int64(inodoMoverIndex) * int64(sb.S_inode_s))
-	archivo.Seek(offsetInodoMover, 0)
-	binary.Read(archivo, binary.LittleEndian, &inodoMover)
-
-	uidActual, gidActual, errIds := obtenerIdsUsuarioActual()
-	if errIds != nil {
-		fmt.Println("[ERROR] No se pudo validar los permisos del usuario.")
-		return
-	}
-
-	if !tienePermisoEscritura(inodoMover, uidActual, gidActual) {
-		fmt.Printf("[ERROR] No tiene permiso de escritura sobre el origen '%s'.\n", rutaOrigen)
-		return
-	}
-
-	// Buscar la Carpeta Destino (Donde va a aterrizar)
-	destinoIndex, inodoDestino, errDestino := utils.BuscarInodoPorRuta(archivo, sb, rutaDestino)
-	if errDestino != nil {
-		fmt.Printf("[ERROR] La ruta destino '%s' no existe.\n", rutaDestino)
-		return
-	}
-
-	if inodoDestino.I_type == '1' {
-		fmt.Println("[ERROR] El destino debe ser una carpeta, no un archivo.")
-		return
-	}
-
-	if !tienePermisoEscritura(inodoDestino, uidActual, gidActual) {
-		fmt.Printf("[ERROR] No tiene permiso de escritura sobre la carpeta destino '%s'.\n", rutaDestino)
-		return
-	}
-
-	for i := 0; i < 12; i++ {
-		if inodoDestino.I_block[i] != -1 {
-			var bc types.BloqueCarpeta
-			offset := int64(sb.S_block_start) + (int64(inodoDestino.I_block[i]) * int64(sb.S_block_s))
-			archivo.Seek(offset, 0)
-			binary.Read(archivo, binary.LittleEndian, &bc)
-
-			for j := 0; j < 4; j++ {
-				if bc.B_content[j].B_inodo != -1 {
-					nombreItem := strings.TrimRight(string(bc.B_content[j].B_name[:]), "\x00")
-					if nombreItem == nombreElemento {
-						fmt.Printf("[ERROR] Ya existe un elemento con nombre '%s' en el destino.\n", nombreElemento)
-						return
-					}
-				}
-			}
-		}
-	}
-
-	// ENLAZAR AL NUEVO PADRE (Usando tu propia función)
-	exitoEnlace := EnlazarInodoEnCarpeta(archivo, &sb, inodoDestino, int32(destinoIndex), inodoMoverIndex, nombreElemento)
-	if !exitoEnlace {
-		fmt.Println("[ERROR] No se pudo enlazar el archivo en el destino (Carpeta llena).")
-		return
-	}
-
-	// DESENLAZAR DEL PADRE VIEJO
-	bcModificar.B_content[indexModificar].B_inodo = -1
-	for k := 0; k < len(bcModificar.B_content[indexModificar].B_name); k++ {
-		bcModificar.B_content[indexModificar].B_name[k] = 0 // Limpiar caracteres
-	}
-
-	offsetMod := int64(sb.S_block_start) + (int64(bloqueModificar) * int64(sb.S_block_s))
-	archivo.Seek(offsetMod, 0)
-	binary.Write(archivo, binary.LittleEndian, &bcModificar)
-
-	// Guardar SuperBloque actualizado
-	archivo.Seek(partStart, 0)
-	binary.Write(archivo, binary.LittleEndian, &sb)
-
-	fmt.Printf("[ÉXITO] Se movió '%s' a '%s' correctamente.\n", nombreElemento, rutaDestino)
 }
 
 func Copy(rutaOrigen string, rutaDestino string) {
-	// 1. Limpieza
-	rutaOrigen = strings.TrimSuffix(strings.ReplaceAll(rutaOrigen, "\"", ""), "/")
-	rutaDestino = strings.TrimSuffix(strings.ReplaceAll(rutaDestino, "\"", ""), "/")
-
 	if !users.SesionActiva {
 		fmt.Println("[ERROR] No hay sesión activa.")
 		return
 	}
 
-	archivo, sb, _, _, partStart, err := utils.ObtenerContextoParticion()
+	rutaVirtualLimpiaOrigen := strings.TrimPrefix(rutaOrigen, "/")
+	rutaVirtualLimpiaDestino := strings.TrimPrefix(rutaDestino, "/")
+
+	partesOrigen := strings.Split(rutaVirtualLimpiaOrigen, "/")
+	nombreElemento := partesOrigen[len(partesOrigen)-1]
+
+	rutaFisicaOrigen := filepath.Join(utils.RutaBaseEspejo, rutaVirtualLimpiaOrigen)
+	rutaFisicaDestino := filepath.Join(utils.RutaBaseEspejo, rutaVirtualLimpiaDestino, nombreElemento)
+
+	// Ejecutamos un comando del sistema operativo para copiar recursivamente
+	cmd := exec.Command("cp", "-r", rutaFisicaOrigen, rutaFisicaDestino)
+	err := cmd.Run()
 	if err != nil {
-		return
+		fmt.Printf("[ERROR] No se pudo copiar: %v\n", err)
+	} else {
+		fmt.Printf("[ÉXITO] Elemento copiado de '%s' a '%s'\n", rutaOrigen, rutaDestino)
 	}
-	defer archivo.Close()
-
-	// 2. Obtener origen
-	_, inodoOrigen, errO := utils.BuscarInodoPorRuta(archivo, sb, rutaOrigen)
-	if errO != nil {
-		fmt.Printf("[ERROR] El origen '%s' no existe.\n", rutaOrigen)
-		return
-	}
-
-	// 3. Obtener destino (debe ser carpeta)
-	_, inodoDestino, errD := utils.BuscarInodoPorRuta(archivo, sb, rutaDestino)
-	if errD != nil || inodoDestino.I_type == '1' {
-		fmt.Printf("[ERROR] El destino '%s' no es una carpeta válida.\n", rutaDestino)
-		return
-	}
-
-	// 4. Iniciar copia recursiva
-	nombreItem := filepath.Base(rutaOrigen)
-
-	// Validar espacio (simple)
-	if inodoDestino.I_type == '0' {
-		realizarCopia(archivo, &sb, inodoOrigen, &inodoDestino, nombreItem, partStart)
-	}
-
-	fmt.Printf("[ÉXITO] Se copió '%s' a '%s' correctamente.\n", rutaOrigen, rutaDestino)
 }
 
 func realizarCopia(archivo *os.File, sb *types.SuperBloque, inodoOrigen types.Inodo, inodoDestino *types.Inodo, nombre string, partStart int64) {
@@ -1149,4 +690,139 @@ func confirmarSobreescritura(ruta string) bool {
 	respuesta, _ := reader.ReadString('\n')
 	respuesta = strings.ToLower(strings.TrimSpace(respuesta))
 	return respuesta == "s" || respuesta == "si" || respuesta == "y" || respuesta == "yes"
+}
+
+func Rename(ruta string, nuevoNombre string) {
+	if !users.SesionActiva {
+		fmt.Println("[ERROR] No hay sesión activa.")
+		return
+	}
+
+	archivo, sb, _, _, _, err := utils.ObtenerContextoParticion()
+	if err != nil {
+		return
+	}
+	defer archivo.Close()
+
+	// 1. Separar la ruta para obtener el padre y el nombre actual
+	rutaLimpia := strings.TrimRight(ruta, "/")
+	partes := strings.Split(rutaLimpia, "/")
+	nombreActual := partes[len(partes)-1]
+
+	rutaPadre := "/"
+	if len(partes) > 2 {
+		rutaPadre = strings.Join(partes[:len(partes)-1], "/")
+	}
+
+	// 2. Buscar Inodo del Padre
+	_, inodoPadre, errP := utils.BuscarInodoPorRuta(archivo, sb, rutaPadre)
+	if errP != nil {
+		fmt.Println("[ERROR] La ruta base no existe.")
+		return
+	}
+
+	// 3. Iterar los bloques del padre para encontrar el archivo/carpeta y renombrarlo
+	modificado := false
+	for i := 0; i < 12; i++ {
+		if inodoPadre.I_block[i] != -1 {
+			var bc types.BloqueCarpeta
+			offset := int64(sb.S_block_start) + (int64(inodoPadre.I_block[i]) * int64(sb.S_block_s))
+			archivo.Seek(offset, 0)
+			binary.Read(archivo, binary.LittleEndian, &bc)
+
+			// Validar si el nuevo nombre ya existe
+			for _, content := range bc.B_content {
+				nombre := strings.TrimRight(string(content.B_name[:]), "\x00")
+				if nombre == nuevoNombre {
+					fmt.Println("[ERROR] Ya existe un archivo o carpeta con ese nombre.")
+					return
+				}
+			}
+
+			// Buscar el actual y cambiarlo
+			for j := 0; j < 4; j++ {
+				nombre := strings.TrimRight(string(bc.B_content[j].B_name[:]), "\x00")
+				if nombre == nombreActual {
+					// Comprobar permisos aquí si es necesario (según el enunciado)
+
+					// Asignar nuevo nombre
+					copiaNombre := make([]byte, 12)
+					copy(copiaNombre, nuevoNombre)
+					copy(bc.B_content[j].B_name[:], copiaNombre)
+
+					// Guardar bloque modificado
+					archivo.Seek(offset, 0)
+					binary.Write(archivo, binary.LittleEndian, &bc)
+					modificado = true
+					break
+				}
+			}
+		}
+		if modificado {
+			break
+		}
+
+		if modificado {
+			archivo.Sync()
+			fmt.Printf("[ÉXITO] Nombre cambiado de '%s' a '%s'.\n", nombreActual, nuevoNombre)
+
+			utils.ReflejarRenombrar(ruta, nuevoNombre)
+		}
+	}
+
+	if modificado {
+		archivo.Sync()
+		fmt.Printf("[ÉXITO] Nombre cambiado de '%s' a '%s'.\n", nombreActual, nuevoNombre)
+	} else {
+		fmt.Println("[ERROR] No se encontró el archivo/carpeta a renombrar.")
+	}
+}
+
+func Edit(rutaDestino string, rutaContenido string) {
+	if !users.SesionActiva {
+		fmt.Println("[ERROR] No hay sesión activa.")
+		return
+	}
+
+	// 1. Leer el archivo físico real en Ubuntu
+	rutaContLimpia := strings.ReplaceAll(rutaContenido, "\"", "")
+	dataFisica, errOS := os.ReadFile(rutaContLimpia)
+	if errOS != nil {
+		fmt.Println("[ERROR] No se pudo leer el archivo físico de contenido:", errOS)
+		return
+	}
+	nuevoTexto := string(dataFisica)
+
+	// 2. Obtener contexto EXT2
+	archivo, sb, _, _, partStart, err := utils.ObtenerContextoParticion()
+	if err != nil {
+		return
+	}
+	defer archivo.Close()
+
+	// 3. Buscar Inodo del archivo destino
+	inodoIndex, inodoDestino, errInodo := utils.BuscarInodoPorRuta(archivo, sb, rutaDestino)
+	if errInodo != nil {
+		fmt.Println("[ERROR] No se encontró el archivo destino en la partición.")
+		return
+	}
+
+	// Validar que sea un archivo (tipo '1' o 1)
+	if inodoDestino.I_type != '1' && inodoDestino.I_type != 1 {
+		fmt.Println("[ERROR] La ruta destino no es un archivo editable.")
+		return
+	}
+
+	// 4. Sobrescribir el archivo
+	utils.EscribirArchivoUsers(archivo, &sb, int32(inodoIndex), &inodoDestino, nuevoTexto, partStart)
+
+	// Actualizar SB
+	archivo.Seek(partStart, 0)
+	binary.Write(archivo, binary.LittleEndian, &sb)
+	archivo.Sync()
+
+	fmt.Printf("[ÉXITO] Archivo '%s' editado correctamente con el contenido de '%s'.\n", rutaDestino, rutaContenido)
+
+	fmt.Printf("[ÉXITO] Archivo '%s' editado correctamente.\n", rutaDestino)
+	utils.ReflejarCreacion(rutaDestino, false, nuevoTexto)
 }

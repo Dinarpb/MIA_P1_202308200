@@ -5,6 +5,7 @@ import (
 	"MIAP1/analyzer"
 	"MIAP1/filesystem"
 	"MIAP1/global"
+	"MIAP1/report"
 	"MIAP1/types"
 	"MIAP1/users"
 	"MIAP1/utils"
@@ -279,6 +280,121 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"archivos": archivos})
+	})
+
+	// Endpoint para generar reportes
+	router.POST("/generar-reporte", func(c *gin.Context) {
+		var req struct {
+			TipoReporte string `json:"tipo_reporte"` // disk, mbr, inode, block, bm_inode, bm_block, sb, file, ls, tree
+			ParticionID string `json:"particion_id"`
+			RutaGuardar string `json:"ruta_guardar"`
+			RutaArchivo string `json:"ruta_archivo"` // Para reportes de file/ls
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Crear directorio si no existe
+		if req.RutaGuardar != "" {
+			os.MkdirAll(filepath.Dir(req.RutaGuardar), 0755)
+		}
+
+		// Capturar stdout mientras se genera el reporte
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		// Generar el reporte
+		report.GenerarReporte(req.TipoReporte, req.RutaGuardar, req.ParticionID, req.RutaArchivo)
+
+		// Restaurar stdout
+		w.Close()
+		os.Stdout = oldStdout
+
+		// Leer la salida
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		salida := buf.String()
+
+		if salida == "" {
+			salida = "[INFO] Reporte generado sin mensajes."
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"output": salida,
+			"ruta":   req.RutaGuardar,
+		})
+	})
+
+	// Endpoint para servir reportes estáticos (imágenes, SVG, etc)
+	router.GET("/reporte/*filePath", func(c *gin.Context) {
+		filePath := c.Param("filePath")
+		// Remover el prefijo "/"
+		if len(filePath) > 0 && filePath[0] == '/' {
+			filePath = filePath[1:]
+		}
+
+		// Sanitizar la ruta para evitar traversal attacks
+		safeFilePath := filePath
+		if strings.Contains(safeFilePath, "..") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Ruta inválida"})
+			return
+		}
+
+		// Intentar buscar el archivo en diferentes ubicaciones
+		posiblesPaths := []string{
+			filepath.Join("/tmp/reportes", safeFilePath),
+			filepath.Join("/home/dinaarpb/reportes", safeFilePath),
+			filepath.Join("/tmp", safeFilePath),
+		}
+
+		var archivoPath string
+		for _, p := range posiblesPaths {
+			if _, err := os.Stat(p); err == nil {
+				archivoPath = p
+				break
+			}
+		}
+
+		if archivoPath == "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Reporte no encontrado"})
+			return
+		}
+
+		c.File(archivoPath)
+	})
+
+	// Endpoint para listar reportes disponibles
+	router.GET("/listar-reportes", func(c *gin.Context) {
+		// Intentar listar desde /tmp/reportes/
+		reportDir := "/tmp/reportes/"
+
+		// Si no existe, usar directorio del usuario
+		if _, err := os.Stat(reportDir); os.IsNotExist(err) {
+			reportDir = "/home/dinaarpb/reportes/"
+		}
+
+		entradas, err := os.ReadDir(reportDir)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo leer la carpeta de reportes"})
+			return
+		}
+
+		var reportes []map[string]interface{}
+		for _, entrada := range entradas {
+			if !entrada.IsDir() {
+				info, _ := entrada.Info()
+				reportes = append(reportes, map[string]interface{}{
+					"nombre":     entrada.Name(),
+					"tamanio":    info.Size(),
+					"modificado": info.ModTime().String(),
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"reportes": reportes})
 	})
 
 	fmt.Println("🚀 Servidor corriendo en http://localhost:3000")

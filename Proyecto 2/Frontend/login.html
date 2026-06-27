@@ -4,86 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Sistema de Archivos</title>
-    <style>
-        :root {
-            --bg-dark: #1e1e2e;
-            --panel-bg: #282a36;
-            --text-main: #f8f8f2;
-            --accent: #bd93f9;
-            --accent-hover: #ff79c6;
-            --error: #ff5555;
-            --success: #50fa7b;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .login-container {
-            background-color: var(--panel-bg);
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
-            width: 100%;
-            max-width: 350px;
-            text-align: center;
-        }
-        .login-container h2 {
-            margin-top: 0;
-            color: var(--accent);
-            margin-bottom: 25px;
-        }
-        .input-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        .input-group label {
-            display: block;
-            font-size: 14px;
-            margin-bottom: 5px;
-            color: #ccc;
-        }
-        .input-group input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #444;
-            border-radius: 5px;
-            background-color: #191a21;
-            color: var(--text-main);
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-        .input-group input:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-        button {
-            width: 100%;
-            background-color: var(--accent);
-            color: #282a36;
-            border: none;
-            padding: 12px;
-            font-size: 16px;
-            font-weight: bold;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-top: 10px;
-        }
-        button:hover {
-            background-color: var(--accent-hover);
-        }
-        #mensaje {
-            margin-top: 15px;
-            font-size: 14px;
-            min-height: 20px;
-        }
-    </style>
+    <link rel="stylesheet" href="css/styles_login.css">
+    <link rel="stylesheet" href="js/script.js">
 </head>
 <body>
 
@@ -112,49 +34,6 @@
         <div id="mensaje"></div>
     </div>
 
-    <script>
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault(); // Evita que la página se recargue
-
-            const user = document.getElementById('txtUser').value;
-            const pass = document.getElementById('txtPass').value;
-            const id = document.getElementById('txtId').value;
-            const mensajeDiv = document.getElementById('mensaje');
-
-            mensajeDiv.style.color = "var(--text-main)";
-            mensajeDiv.innerText = "Conectando...";
-
-            // Armamos el comando de texto exacto que tu analizador espera
-            const comandoLogin = `login -user=${user} -pass=${pass} -id=${id}`;
-
-            try {
-                // Enviamos el comando a tu API
-                const response = await fetch('http://localhost:3000/ejecutar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ comando: comandoLogin })
-                });
-
-                const data = await response.json();
-
-                // Revisamos si la salida del backend contiene un error
-                if (data.output && data.output.includes("[ERROR]")) {
-                    mensajeDiv.style.color = "var(--error)";
-                    mensajeDiv.innerText = data.output;
-                } else {
-                    mensajeDiv.style.color = "var(--success)";
-                    mensajeDiv.innerText = "¡Login exitoso! Redirigiendo...";
-                    
-                    // Si el login es exitoso, redirigimos automáticamente a la pantalla del explorador
-                    setTimeout(() => {
-                        window.location.href = 'index.html?view=explorer';
-                    }, 1000);
-                }
-            } catch (error) {
-                mensajeDiv.style.color = "var(--error)";
-                mensajeDiv.innerText = "Error: No se pudo conectar con el servidor Go. ¿Está encendido?";
-            }
-        });
-    </script>
+    <script src="js/script.js"></script>
 </body>
 </html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reportes - EXT2 / MIA</title>
+    <link rel="stylesheet" href="css/styles_report.css">
+    <link rel="stylesheet" href="js/script_report.js">
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h2>📊 Tipos de Reportes</h2>
+        <div class="report-type active" data-reporte="disk">💾 Disco (MBR)</div>
+        <div class="report-type" data-reporte="mbr">📋 MBR Detallado</div>
+        <div class="report-type" data-reporte="inode">📑 Inodos</div>
+        <div class="report-type" data-reporte="block">🗂️ Bloques</div>
+        <div class="report-type" data-reporte="bm_inode">📊 Bitmap Inodos</div>
+        <div class="report-type" data-reporte="bm_block">📊 Bitmap Bloques</div>
+        <div class="report-type" data-reporte="tree">🌳 Árbol de Directorios</div>
+        <div class="report-type" data-reporte="sb">⚙️ SuperBloque</div>
+        <hr style="border-color: var(--border); margin: 10px 0;">
+        <button onclick="window.location.href='index.html'" style="width: 100%; margin-top: auto;">← Volver al Panel</button>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 Generador de Reportes</h1>
+            <div style="background-color: rgba(139, 233, 253, 0.1); border: 1px solid #8be9fd; padding: 15px; border-radius: 4px; margin-bottom: 15px; display: none;" id="helpBox">
+                <strong>⚠️ Recordatorio:</strong> Debes crear y montar una partición primero desde el dashboard para poder generar reportes.
+                <button onclick="document.getElementById('helpBox').style.display='none'; localStorage.setItem('helpBoxClosed', 'true');" style="float: right; background: none; border: none; color: #8be9fd; cursor: pointer; padding: 0; font-size: 18px;">×</button>
+            </div>
+            <div class="controls">
+                <div class="control-group">
+                    <label>Seleccionar Partición</label>
+                    <select id="particionSelect">
+                        <option value="">Cargando...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Ruta de Guardado</label>
+                    <input type="text" id="rutaGuardar" placeholder="/tmp/reportes/disk" value="/tmp/reportes/disk">
+                </div>
+                <div class="control-group">
+                    <label>&nbsp;</label>
+                    <button id="generarBtn" onclick="generarReporte()">📥 Generar Reporte</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content-area">
+            <!-- Panel de Consola -->
+            <div class="card">
+                <h3>📝 Consola de Salida</h3>
+                <div id="consola" class="console-output">Esperando generar un reporte...</div>
+            </div>
+
+            <!-- Panel de Visualización -->
+            <div class="card">
+                <h3 id="reportTitleViewer">📊 Vista Previa del Reporte</h3>
+                <div id="reportViewer" class="report-viewer">
+                    <div class="no-report">Selecciona un reporte para visualizar</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script_report.js"></script>
+</body>
+</html>

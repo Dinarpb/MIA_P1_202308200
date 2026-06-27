@@ -202,14 +202,22 @@ func Mkfs(id string, tipo string) {
 	texto := "1,G,root\n1,U,root,root,123\n"
 	copy(bufferUsersDirecto, texto)
 
-	// Lo escribimos al disco a la fuerza
+	/* Lo escribimos al disco a la fuerza
 	_, errWrite := archivo.Write(bufferUsersDirecto)
 	if errWrite != nil {
 		fmt.Println("[ERROR FATAL] El sistema operativo no nos deja escribir:", errWrite)
 	} else {
 		fmt.Println("[DEBUG] users.txt inyectado a la fuerza en pos:", offsetBloque1)
 	}
-	// -------------------------------------------------------------
+	*/
 
 	fmt.Printf("[ÉXITO] Formateo exitoso. Se escribirán %d inodos.\n", n)
+
+	os.RemoveAll(utils.RutaBaseEspejo)
+	os.MkdirAll(utils.RutaBaseEspejo, 0755)
+
+	// Crear el users.txt inicial en el espejo
+	utils.ReflejarCreacion("/users.txt", false, "1,G,root\n1,U,root,root,123\n")
+
+	fmt.Println("[ÉXITO] Partición formateada y espejo reiniciado.")
 }

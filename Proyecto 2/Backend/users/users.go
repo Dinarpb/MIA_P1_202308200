@@ -41,7 +41,7 @@ func Login(user string, pass string, id string) {
 
 	contenido := utils.LeerArchivoUsers(archivo, sb, inodoUsers)
 
-	fmt.Printf("[DEBUG] Contenido de users.txt leído:\n'%s'\n", contenido)
+	//fmt.Printf("[DEBUG] Contenido de users.txt leído:\n'%s'\n", contenido)
 
 	lineas := strings.Split(contenido, "\n")
 
@@ -54,7 +54,7 @@ func Login(user string, pass string, id string) {
 		}
 		datos := strings.Split(linea, ",")
 
-		fmt.Printf("[DEBUG] Procesando línea: %v\n", datos)
+		//fmt.Printf("[DEBUG] Procesando línea: %v\n", datos)
 
 		if len(datos) >= 5 && strings.TrimSpace(datos[1]) == "U" && strings.TrimSpace(datos[0]) != "0" {
 			if strings.TrimSpace(datos[3]) == user && strings.TrimSpace(datos[4]) == pass {
@@ -263,7 +263,7 @@ func Mkusr(user string, pass string, grp string) {
 
 	// Escribir al disco
 	utils.EscribirArchivoUsers(archivo, &sb, inodoIndex, &inodoUsers, contenido, partStart)
-	fmt.Println("[DEBUG] Escritura terminada.")
+	//fmt.Println("[DEBUG] Escritura terminada.")
 
 	archivo.Seek(partStart, 0)
 	binary.Write(archivo, binary.LittleEndian, &sb)

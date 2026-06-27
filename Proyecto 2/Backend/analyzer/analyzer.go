@@ -100,73 +100,15 @@ func AnalizarComando(entrada string) {
 	case "execute", "exec":
 		analizarExecute(parametros)
 	case "rename":
-		path, _ := parametros["path"]
-		name, _ := parametros["name"]
-		if path == "" || name == "" {
-			fmt.Println("[ERROR] Comando RENAME requiere los parámetros -path y -name.")
-		} else {
-			filesystem.Rename(path, name)
-		}
-	case "remove":
-		path, _ := parametros["path"]
-		if path == "" {
-			fmt.Println("[ERROR] Comando REMOVE requiere el parámetro -path.")
-		} else {
-			filesystem.Remove(path)
-		}
+		analizarRename(parametros)
 	case "edit":
-		path, okPath := parametros["path"]
-		contenido, okContenido := parametros["contenido"]
-
-		if !okPath || !okContenido || path == "" || contenido == "" {
-			fmt.Println("[ERROR] El comando EDIT requiere obligatoriamente -path y -contenido.")
-		} else {
-			filesystem.Edit(path, contenido)
-		}
-	case "move":
-		path := ""
-		destino := ""
-
-		// Recorremos los parámetros para extraer los valores
-		for _, param := range parametros {
-			// Asumiendo que tu mapa de parámetros es map[string]string o similar
-			// Ajusta esto según cómo guardes tus parámetros en el switch
-			if strings.HasPrefix(strings.ToLower(param), "-path=") {
-				path = strings.Split(param, "=")[1]
-			} else if strings.HasPrefix(strings.ToLower(param), "-destino=") {
-				destino = strings.Split(param, "=")[1]
-			}
-		}
-
-		// Si prefieres usar el mapa directamente como lo hacías con mkdir:
-		// path = parametros["path"]
-		// destino = parametros["destino"]
-
-		if path == "" || destino == "" {
-			fmt.Println("[ERROR] El comando MOVE requiere -path y -destino.")
-		} else {
-			filesystem.Move(path, destino)
-		}
+		analizarEdit(parametros)
+	case "remove":
+		analizarRemove(parametros)
 	case "copy":
-		path := ""
-		destino := ""
-
-		// Recorremos los parámetros para extraer los valores
-		for _, param := range parametros {
-			// Asumiendo que tu mapa de parámetros es map[string]string o similar
-			// Ajusta esto según cómo guardes tus parámetros en el switch
-			if strings.HasPrefix(strings.ToLower(param), "-path=") {
-				path = strings.Split(param, "=")[1]
-			} else if strings.HasPrefix(strings.ToLower(param), "-destino=") {
-				destino = strings.Split(param, "=")[1]
-			}
-		}
-
-		if path == "" || destino == "" {
-			fmt.Println("[ERROR] El comando COPY requiere -path y -destino.")
-		} else {
-			filesystem.Copy(path, destino)
-		}
+		analizarCopy(parametros)
+	case "move":
+		analizarMove(parametros)
 	default:
 		if strings.HasPrefix(comando, "#") {
 			fmt.Println(entrada)
@@ -563,4 +505,56 @@ func analizarUnmount(parametros map[string]string) {
 	}
 
 	mount.Unmount(id)
+}
+
+func analizarRename(parametros map[string]string) {
+	path, okPath := parametros["path"]
+	name, okName := parametros["name"]
+	if !okPath || !okName {
+		fmt.Println("[ERROR] RENAME requiere obligatoriamente -path y -name.")
+		return
+	}
+	filesystem.Rename(path, name)
+}
+
+func analizarEdit(parametros map[string]string) {
+	path, okPath := parametros["path"]
+	cont, okCont := parametros["contenido"]
+	if !okPath || !okCont {
+		fmt.Println("[ERROR] EDIT requiere obligatoriamente -path y -contenido.")
+		return
+	}
+	filesystem.Edit(path, cont)
+}
+
+func analizarRemove(parametros map[string]string) {
+	path, okPath := parametros["path"]
+	if !okPath {
+		fmt.Println("[ERROR] REMOVE requiere obligatoriamente -path.")
+		return
+	}
+	filesystem.Remove(path) // Lo implementaremos después
+	fmt.Printf("[INFO] Función REMOVE en construcción para la ruta: %s\n", path)
+}
+
+func analizarCopy(parametros map[string]string) {
+	path, okPath := parametros["path"]
+	destino, okDest := parametros["destino"]
+	if !okPath || !okDest {
+		fmt.Println("[ERROR] COPY requiere obligatoriamente -path y -destino.")
+		return
+	}
+	filesystem.Copy(path, destino) // Lo implementaremos después
+	fmt.Printf("[INFO] Función COPY en construcción. Origen: %s, Destino: %s\n", path, destino)
+}
+
+func analizarMove(parametros map[string]string) {
+	path, okPath := parametros["path"]
+	destino, okDest := parametros["destino"]
+	if !okPath || !okDest {
+		fmt.Println("[ERROR] MOVE requiere obligatoriamente -path y -destino.")
+		return
+	}
+	filesystem.Move(path, destino) // Lo implementaremos después
+	fmt.Printf("[INFO] Función MOVE en construcción. Origen: %s, Destino: %s\n", path, destino)
 }
